@@ -1,0 +1,1177 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>3Dクライミング・Hex試作</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    html,body{margin:0;height:100%;overflow:hidden;background:#111820;color:#eef2f7;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    #app{position:relative;width:100%;height:100%}
+    canvas{display:block}
+    .panel{position:absolute;left:14px;top:14px;z-index:10;background:rgba(15,20,28,.9);border:1px solid #354052;border-radius:12px;padding:12px;width:340px;backdrop-filter:blur(8px)}
+    .panel.hidden{display:none}
+    .panel h1{font-size:16px;margin:0 28px 8px 0}
+    .panel-close,.panel-open{position:absolute;z-index:11;background:#202a36;color:#eef2f7;border:1px solid #445269;border-radius:8px;cursor:pointer}
+    .panel-close{right:8px;top:8px;padding:4px 8px;font-size:14px;line-height:1}
+    .panel-open{left:14px;top:14px;padding:7px 10px}
+    .panel-open.hidden{display:none}
+    .panel p,.small{font-size:12px;line-height:1.5;color:#aab4c2;margin:6px 0}
+    .row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+    button{background:#202a36;color:#eef2f7;border:1px solid #445269;border-radius:8px;padding:7px 10px;cursor:pointer}
+    button.active{border-color:#75a7ff;box-shadow:0 0 0 2px rgba(117,167,255,.2)}
+    .load-row{display:flex;justify-content:space-between;align-items:end;margin:8px 0 6px}
+    .load-value{font-size:28px;font-weight:800}
+    .bar{height:10px;background:#18212b;border:1px solid #344050;border-radius:999px;overflow:hidden}
+    .bar>div{height:100%;width:0;background:#39d353}
+    .keymap{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:8px 0}
+    .keymap span{border:1px solid #445269;border-radius:6px;padding:5px;text-align:center;font-size:12px}
+    .status{font-size:12px;border-top:1px solid #344050;padding-top:8px;margin-top:8px}
+    .ok{color:#69d38d}.warn{color:#ffc857}.bad{color:#ff6b6b}
+    #loading{position:absolute;right:14px;top:14px;background:rgba(15,20,28,.85);padding:8px 10px;border-radius:8px;font-size:12px}
+    .gameover{position:absolute;inset:0;z-index:30;background:rgba(7,9,12,.72);display:flex;align-items:center;justify-content:center}
+    .gameover.hidden{display:none}
+    .gameover-card{background:#1d222b;border:1px solid #354052;border-radius:14px;padding:22px;text-align:center;width:280px}
+    .gameover-title{font-size:26px;font-weight:800;margin-bottom:8px}
+    .spec{width:100%;border-collapse:collapse;font-size:11px;margin:6px 0 8px}
+    .spec th,.spec td{border:1px solid #344050;padding:4px 6px;text-align:center}
+    .spec th{color:#9aa8b8;font-weight:600}
+    .spec td.on{background:#243044;color:#e8f0ff}
+    .metrics{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;font-size:11px;color:#c5d0dc;margin:6px 0}
+    .pose-grid{display:grid;gap:3px;margin:8px 0}
+    .pose-grid i{display:flex;align-items:center;justify-content:center;min-height:22px;border:1px solid #344050;border-radius:5px;font-size:9px;color:#6d7a8a;font-style:normal}
+    .pose-grid i.on{background:#243044;color:#e8f0ff;border-color:#4d6490}
+  </style>
+</head>
+<body>
+<div id="app">
+  <button id="panelOpen" class="panel-open hidden" type="button">パネル</button>
+  <div id="hudPanel" class="panel">
+    <button id="panelClose" class="panel-close" type="button" aria-label="パネルを閉じる">×</button>
+    <h1>3D Climbing Hex</h1>
+    <p>壁はHexグリッドです。隣接中心間は25cmで、到達判定もこの距離を使います。マウスで移動先のホールド／Hex、Q/E/A/Dで動かす肢を指定します。</p>
+    <div class="row">
+      <button id="femaleBtn" class="active" type="button">女性 150cm</button>
+      <button id="maleBtn" type="button">男性 175cm</button>
+    </div>
+    <table class="spec">
+      <thead>
+        <tr><th></th><th>女性</th><th>男性</th></tr>
+      </thead>
+      <tbody>
+        <tr><th>身長</th><td id="specFHeight" class="on">6hex / 150cm</td><td id="specMHeight">7hex / 175cm</td></tr>
+        <tr><th>手↔手</th><td id="specFHH" class="on">6hex / 150cm</td><td id="specMHH">7hex / 175cm</td></tr>
+        <tr><th>足↔足</th><td id="specFFF" class="on">5hex / 125cm</td><td id="specMFF">6hex / 150cm</td></tr>
+        <tr><th>手↔足</th><td id="specFHF" class="on">8hex / 200cm</td><td id="specMHF">9hex / 225cm</td></tr>
+      </tbody>
+    </table>
+    <div class="load-row">
+      <div>
+        <div class="small">姿勢負荷</div>
+        <div id="loadValue" class="load-value">0%</div>
+      </div>
+      <div id="statusBadge" class="small ok">安定</div>
+    </div>
+    <div class="bar"><div id="loadBar"></div></div>
+    <div class="metrics">
+      <div>支持 <span id="supportLabel">4点</span></div>
+      <div>パターン <span id="poseId">-</span></div>
+      <div>手↔手 <span id="hhLabel">-</span></div>
+      <div>足↔足 <span id="ffLabel">-</span></div>
+      <div>手↔足 <span id="hfLabel">-</span></div>
+      <div>リーチ負荷 <span id="reachLabel">-</span></div>
+    </div>
+    <div class="row">
+      <button id="resetBtn">姿勢リセット</button>
+      <button id="regenBtn">壁を再生成</button>
+    </div>
+    <div class="keymap">
+      <span>Q 左手</span><span>E 右手</span>
+      <span>A 左足</span><span>D 右足</span>
+    </div>
+    <p>ホールドにマウスを合わせて Q/E/A/D。残りの支持点は固定し、選んだ肢だけが次のHexへ移動します。左ドラッグでカメラ回転。</p>
+    <div id="poseGrid" class="pose-grid"></div>
+    <div id="status" class="status">初期化中...</div>
+  </div>
+  <div id="loading">Three.js / モデル読み込み中...</div>
+  <div id="gameOver" class="gameover hidden">
+    <div class="gameover-card">
+      <div class="gameover-title">落下</div>
+      <p id="gameOverText" class="small">負荷が100%を超えました。</p>
+      <button id="restartBtn" type="button">もう一度</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+const statusEl = document.getElementById('status');
+const loadingEl = document.getElementById('loading');
+const loadValue = document.getElementById('loadValue');
+const loadBar = document.getElementById('loadBar');
+const badge = document.getElementById('statusBadge');
+const gameOver = document.getElementById('gameOver');
+const gameOverText = document.getElementById('gameOverText');
+const poseIdEl = document.getElementById('poseId');
+const poseGridEl = document.getElementById('poseGrid');
+const supportLabel = document.getElementById('supportLabel');
+const hhLabel = document.getElementById('hhLabel');
+const ffLabel = document.getElementById('ffLabel');
+const hfLabel = document.getElementById('hfLabel');
+const reachLabel = document.getElementById('reachLabel');
+
+const QUATERNIUS_MODEL =
+  'https://cdn.jsdelivr.net/gh/Seyamalam/blood-league-kickoff@main/public/assets/vendor/quaternius/night-striker.glb';
+
+let THREE, OrbitControls, GLTFLoader;
+try {
+  [THREE, {OrbitControls}, {GLTFLoader}] = await Promise.all([
+    import('three'),
+    import('three/addons/controls/OrbitControls.js'),
+    import('three/addons/loaders/GLTFLoader.js'),
+  ]);
+} catch (err) {
+  loadingEl.textContent = 'ライブラリ読込失敗: ' + err.message;
+  throw err;
+}
+
+const COLS = 15;
+const ROWS = 20;
+const HEX_CM = 25;
+const HEX = HEX_CM / 100;
+const SQRT3 = Math.sqrt(3);
+const BASE_Y = 0.2;
+const HOLD_Z = 0.05;
+const HIP_IN_Z = 0.12;
+const CHEST_MIN_Z = 0.16;
+const CHEST_MAX_Z = 0.24;
+const HEAD_MIN_Z = 0.14;
+const MOVE_MS = 380;
+const limbNames = {LH:'左手', RH:'右手', LF:'左足', RF:'右足'};
+const limbKeys = {q:'LH', e:'RH', a:'LF', d:'RF'};
+const LIMB_ORDER = ['LH','RH','LF','RF'];
+
+const BODIES = {
+  female: {
+    id: 'female',
+    label: '女性',
+    heightCm: 150,
+    heightHex: 6,
+    handHand: 6,
+    footFoot: 5,
+    handFoot: 8,
+  },
+  male: {
+    id: 'male',
+    label: '男性',
+    heightCm: 175,
+    heightHex: 7,
+    handHand: 7,
+    footFoot: 6,
+    handFoot: 9,
+  },
+};
+
+let bodyType = 'female';
+function currentBody(){ return BODIES[bodyType]; }
+function playerHeight(){ return currentBody().heightCm / 100; }
+function hipStanding(){ return playerHeight() * 0.52; }
+function hipSquat(){ return playerHeight() * 0.23; }
+
+let wall = [];
+let limbs = {};
+let hovered = null;
+let fell = false;
+let moveCounter = 4;
+let displayLimbs = null;
+let anim = null;
+let bones = {};
+let skinnedMeshes = [];
+let characterRoot = null;
+let nativeModelHeight = 1;
+let holdMeshes = new Map();
+let rig = { hipToFoot: hipStanding() };
+
+const app = document.getElementById('app');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x111820);
+
+const camera = new THREE.PerspectiveCamera(42, innerWidth/innerHeight, 0.05, 100);
+camera.position.set(2.4, 2.3, 6.6);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+app.prepend(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 2.1, 0);
+controls.enableDamping = true;
+controls.enablePan = false;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x26313d, 1.8));
+const sun = new THREE.DirectionalLight(0xffffff, 2.3);
+sun.position.set(2.4, 5, 3.4);
+sun.castShadow = true;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0x9ec5ff, 0.65);
+fill.position.set(-3, 2, 2);
+scene.add(fill);
+
+const hexHeight = (ROWS - 1) * HEX * SQRT3 / 2;
+const wallW = (COLS - 1) * HEX + HEX + 0.7;
+const wallH = hexHeight + 0.9;
+const wallMesh = new THREE.Mesh(
+  new THREE.BoxGeometry(wallW, wallH, 0.16),
+  new THREE.MeshStandardMaterial({color:0x3d4650, roughness:.95})
+);
+wallMesh.position.set(0, BASE_Y + hexHeight / 2, -0.1);
+wallMesh.receiveShadow = true;
+scene.add(wallMesh);
+
+const floor = new THREE.Mesh(
+  new THREE.BoxGeometry(8, 0.16, 4),
+  new THREE.MeshStandardMaterial({color:0x1d2630})
+);
+floor.position.set(0, -0.08, 1);
+floor.receiveShadow = true;
+scene.add(floor);
+
+const hexGridGroup = new THREE.Group();
+scene.add(hexGridGroup);
+const holdGroup = new THREE.Group();
+scene.add(holdGroup);
+
+const bindPose = new Map();
+const _q = new THREE.Quaternion();
+const _qParent = new THREE.Quaternion();
+const _qWorld = new THREE.Quaternion();
+
+function planar(col, row){
+  return {
+    x: col + 0.5 * (row & 1),
+    y: row * SQRT3 / 2,
+  };
+}
+
+function planarMidX(){
+  return (COLS - 0.5) / 2;
+}
+
+function planarMaxY(){
+  return planar(0, ROWS - 1).y;
+}
+
+function planarToWorld(px, py, z=HOLD_Z){
+  return new THREE.Vector3(
+    (px - planarMidX()) * HEX,
+    BASE_Y + (planarMaxY() - py) * HEX,
+    z
+  );
+}
+
+function gridToWorld(col, row, z=HOLD_Z){
+  const p = planar(col, row);
+  return planarToWorld(p.x, p.y, z);
+}
+
+function distHex(a, b){
+  const pa = planar(a.x, a.y);
+  const pb = planar(b.x, b.y);
+  return Math.hypot(pa.x - pb.x, pa.y - pb.y);
+}
+
+function hfEllipseT(a, b, body=currentBody()){
+  const pa = planar(a.x, a.y);
+  const pb = planar(b.x, b.y);
+  const dx = (pa.x - pb.x) / body.handHand;
+  const dy = (pa.y - pb.y) / body.handFoot;
+  return Math.hypot(dx, dy);
+}
+
+function hexCornersWorld(col, row, scale=1){
+  const center = gridToWorld(col, row, -0.018);
+  const radius = (HEX / SQRT3) * scale;
+  const pts = [];
+  for(let i=0;i<6;i++){
+    const a = Math.PI / 180 * (60 * i - 30);
+    pts.push(new THREE.Vector3(
+      center.x + radius * Math.cos(a),
+      center.y + radius * Math.sin(a),
+      center.z
+    ));
+  }
+  return pts;
+}
+
+function buildHexGrid(){
+  hexGridGroup.clear();
+  const positions = [];
+  for(let row=0; row<ROWS; row++){
+    for(let col=0; col<COLS; col++){
+      const pts = hexCornersWorld(col, row, 0.96);
+      for(let i=0;i<6;i++){
+        const a = pts[i], b = pts[(i+1)%6];
+        positions.push(a.x, a.y, a.z, b.x, b.y, b.z);
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const lines = new THREE.LineSegments(
+    geo,
+    new THREE.LineBasicMaterial({color:0x5b6774, transparent:true, opacity:0.28})
+  );
+  hexGridGroup.add(lines);
+}
+
+function makeWall(){
+  wall = Array.from({length:ROWS}, ()=>Array.from({length:COLS}, ()=>{
+    const r = Math.random();
+    if(r<0.48) return Math.random()<0.55 ? 0 : Math.floor(Math.random()*3);
+    if(r<0.80) return 3+Math.floor(Math.random()*3);
+    if(r<0.95) return 6+Math.floor(Math.random()*3);
+    return 9+Math.floor(Math.random()*2);
+  }));
+  [[6,11],[8,11],[6,15],[8,15]].forEach(([x,y])=>{ wall[y][x] = Math.max(wall[y][x], 7); });
+}
+
+function resetPose(){
+  limbs = {
+    LH:{x:6,y:11,moveOrder:1},
+    RH:{x:8,y:11,moveOrder:2},
+    LF:{x:6,y:15,moveOrder:3},
+    RF:{x:8,y:15,moveOrder:4},
+  };
+  moveCounter = 4;
+  hovered = null;
+  fell = false;
+  anim = null;
+  displayLimbs = cloneState(limbs);
+  gameOver.classList.add('hidden');
+}
+
+function cloneState(s){ return JSON.parse(JSON.stringify(s)); }
+
+function updatePoseHud(state=displayLimbs||limbs){
+  const b = currentBody();
+  const load = calcLoad(state);
+  const hh = distHex(state.LH, state.RH);
+  const ff = distHex(state.LF, state.RF);
+  const hf = Math.max(
+    distHex(state.LH, state.LF),
+    distHex(state.LH, state.RF),
+    distHex(state.RH, state.LF),
+    distHex(state.RH, state.RF)
+  );
+  poseIdEl.textContent = load.ok ? '可能' : '限界超え';
+  supportLabel.textContent = `${load.supportCount}点`;
+  hhLabel.textContent = `${hh.toFixed(1)} / ${b.handHand}`;
+  ffLabel.textContent = `${ff.toFixed(1)} / ${b.footFoot}`;
+  hfLabel.textContent = `${hf.toFixed(1)} / ${b.handFoot}`;
+  reachLabel.textContent = `${Math.round(load.reach)}%`;
+
+  const box = {
+    minX: Math.min(...LIMB_ORDER.map(k=>state[k].x)),
+    minY: Math.min(...LIMB_ORDER.map(k=>state[k].y)),
+    maxX: Math.max(...LIMB_ORDER.map(k=>state[k].x)),
+    maxY: Math.max(...LIMB_ORDER.map(k=>state[k].y)),
+  };
+  const w = box.maxX - box.minX + 1;
+  const h = box.maxY - box.minY + 1;
+  poseGridEl.style.gridTemplateColumns = `repeat(${w}, minmax(0,1fr))`;
+  const cells = [];
+  for(let y=box.minY; y<=box.maxY; y++){
+    for(let x=box.minX; x<=box.maxX; x++){
+      const tags = LIMB_ORDER.filter(k=>state[k].x===x && state[k].y===y);
+      cells.push(`<i class="${tags.length?'on':''}">${tags.join(' ')}</i>`);
+    }
+  }
+  poseGridEl.innerHTML = cells.join('');
+}
+
+function median(vals){
+  const a = [...vals].sort((a,b)=>a-b);
+  return (a[1]+a[2])/2;
+}
+
+function bodyPose(state=limbs){
+  const pts = {};
+  for(const k of LIMB_ORDER) pts[k] = planar(state[k].x, state[k].y);
+  const bx = median(LIMB_ORDER.map(k=>pts[k].x));
+  const handY = (pts.LH.y + pts.RH.y) / 2;
+  const footY = (pts.LF.y + pts.RF.y) / 2;
+  const torsoTopY = handY*.62 + footY*.38;
+  const torsoBottomY = handY*.30 + footY*.70;
+  const shoulderHalf = currentBody().heightHex * 0.07;
+  const hipHalf = currentBody().heightHex * 0.055;
+  return {
+    LH: pts.LH, RH: pts.RH, LF: pts.LF, RF: pts.RF,
+    shoulders:{ L:{x:bx-shoulderHalf,y:torsoTopY}, R:{x:bx+shoulderHalf,y:torsoTopY} },
+    hips:{ L:{x:bx-hipHalf,y:torsoBottomY}, R:{x:bx+hipHalf,y:torsoBottomY} },
+    shoulder:{x:bx,y:torsoTopY},
+    hip:{x:bx,y:torsoBottomY},
+    head:{x:bx,y:torsoTopY - currentBody().heightHex * 0.12},
+  };
+}
+
+function solveTwoBone(root, target, len1, len2, bendSign){
+  const dx = target.x-root.x, dy = target.y-root.y;
+  const d = Math.hypot(dx,dy);
+  const maxReach = len1+len2;
+  const minReach = Math.abs(len1-len2);
+  if(d>maxReach+1e-6 || d<minReach-1e-6 || d===0) return {valid:false, distance:d};
+  const a = (len1*len1 - len2*len2 + d*d)/(2*d);
+  const h = Math.sqrt(Math.max(0, len1*len1 - a*a));
+  const ux = dx/d, uy = dy/d;
+  const joint = {x:root.x+a*ux - uy*h*bendSign, y:root.y+a*uy + ux*h*bendSign};
+  const v1 = {x:root.x-joint.x, y:root.y-joint.y};
+  const v2 = {x:target.x-joint.x, y:target.y-joint.y};
+  const mag = Math.hypot(v1.x,v1.y)*Math.hypot(v2.x,v2.y);
+  const angle = Math.acos(Math.max(-1, Math.min(1, (v1.x*v2.x+v1.y*v2.y)/(mag||1))))*180/Math.PI;
+  return {valid:true, joint, angle, distance:d};
+}
+
+function skeletonIK(state=limbs){
+  const p = bodyPose(state);
+  const h = currentBody().heightHex;
+  const upperArm = h * 0.28, forearm = h * 0.27;
+  const thigh = h * 0.30, shin = h * 0.29;
+  const leftArm = solveTwoBone(p.shoulders.L, p.LH, upperArm, forearm, -1);
+  const rightArm = solveTwoBone(p.shoulders.R, p.RH, upperArm, forearm, 1);
+  const leftLeg = solveTwoBone(p.hips.L, p.LF, thigh, shin, -1);
+  const rightLeg = solveTwoBone(p.hips.R, p.RF, thigh, shin, 1);
+  let penalty = 0, impossible = 0;
+  for(const a of [leftArm,rightArm]){
+    if(!a.valid){ impossible += 90; continue; }
+    if(a.angle>165) penalty += (a.angle-165)*1.2;
+    if(a.angle<35) penalty += (35-a.angle)*1.8;
+  }
+  for(const l of [leftLeg,rightLeg]){
+    if(!l.valid){ impossible += 90; continue; }
+    if(l.angle>170) penalty += (l.angle-170)*1.0;
+    if(l.angle<45) penalty += (45-l.angle)*1.7;
+  }
+  return {p, leftArm, rightArm, leftLeg, rightLeg, penalty, impossible};
+}
+
+function pointSupport(p){ return Math.max(0, Math.min(10, wall[p.y]?.[p.x] ?? 0)); }
+
+function reachLoadFromT(t){
+  if(t > 1 + 1e-6) return {impossible: 130, load: 0};
+  if(t < 0.50) return {impossible: 0, load: 0};
+  const u = (t - 0.50) / 0.50;
+  return {impossible: 0, load: u * u * 52};
+}
+
+function poseReach(state){
+  const b = currentBody();
+  const hh = distHex(state.LH, state.RH);
+  const ff = distHex(state.LF, state.RF);
+  const hfPairs = [
+    [state.LH, state.LF], [state.LH, state.RF],
+    [state.RH, state.LF], [state.RH, state.RF],
+  ];
+  let load = 0, impossible = 0, maxHfT = 0;
+  const hhR = reachLoadFromT(hh / b.handHand);
+  const ffR = reachLoadFromT(ff / b.footFoot);
+  load += hhR.load + ffR.load;
+  impossible += hhR.impossible + ffR.impossible;
+  for(const [a,c] of hfPairs){
+    const t = hfEllipseT(a, c, b);
+    maxHfT = Math.max(maxHfT, t);
+    const r = reachLoadFromT(t);
+    load += r.load;
+    impossible += r.impossible;
+  }
+  return {
+    ok: impossible === 0,
+    load,
+    impossible,
+    hh,
+    ff,
+    hfT: maxHfT,
+  };
+}
+
+function calcLoad(state=limbs, movingLimb=null){
+  const ik = skeletonIK(state);
+  const p = ik.p;
+  const reachInfo = poseReach(state);
+  let support = 0, distortion = ik.penalty, impossible = ik.impossible + reachInfo.impossible;
+  const planted = movingLimb ? LIMB_ORDER.filter(k=>k!==movingLimb) : LIMB_ORDER;
+  const strengths = planted.map(k=>pointSupport(state[k]));
+  const sum = strengths.reduce((a,b)=>a+b,0);
+  const useful = strengths.filter(v=>v>=3).length;
+  const contact = strengths.filter(v=>v>0).length;
+
+  if(contact === 0 || sum <= 0){
+    impossible += 140;
+  }else{
+    const byCount = useful >= 4 ? 0 : useful === 3 ? 8 : useful === 2 ? 26 : useful === 1 ? 52 : 78;
+    support += byCount;
+    support += strengths.filter(v=>v>0 && v<4).length * 7;
+    support += strengths.filter(v=>v>0 && v<2).length * 10;
+    const need = useful >= 3 ? 16 : useful === 2 ? 12 : 8;
+    support += Math.max(0, need - sum) * 2.4;
+  }
+
+  const xs = planted.map(k=>planar(state[k].x, state[k].y).x);
+  const ys = planted.map(k=>planar(state[k].x, state[k].y).y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const outX = Math.max(0, minX-p.hip.x, p.hip.x-maxX);
+  const outY = Math.max(0, minY-p.hip.y, p.hip.y-maxY);
+  support += (outX + outY) * 6;
+
+  if(p.LF.y <= p.head.y) impossible += 80;
+  if(p.RF.y <= p.head.y) impossible += 80;
+
+  const total = Math.max(0, Math.round(support + reachInfo.load + distortion + impossible));
+  return {
+    total,
+    support,
+    reach: reachInfo.load,
+    distortion,
+    impossible,
+    supportCount: useful,
+    contact,
+    ok: reachInfo.ok && impossible < 100,
+    hh: reachInfo.hh,
+    ff: reachInfo.ff,
+  };
+}
+
+function candidateStateFor(limb, x, y){
+  const s = cloneState(limbs);
+  const cur = s[limb];
+  if(x<0||y<0||x>=COLS||y>=ROWS) return null;
+  if(cur.x===x && cur.y===y) return null;
+  const opposite = (limb==='LH'||limb==='RH') ? ['LF','RF'] : ['LH','RH'];
+  for(const k of opposite){
+    if(s[k].x===x && s[k].y===y) return null;
+  }
+  s[limb] = {x, y, moveOrder: cur.moveOrder};
+  if(!poseReach(s).ok) return null;
+  return s;
+}
+
+function availableAt(x,y){
+  const out = {};
+  for(const k of LIMB_ORDER){
+    const st = candidateStateFor(k,x,y);
+    if(st) out[k] = {state:st, load: calcLoad(st,k).total};
+  }
+  return out;
+}
+
+function colorForLoad(v){
+  if(v>=100) return '#ff4d4f';
+  if(v>=80) return '#ff9f1c';
+  if(v>=60) return '#ffd33d';
+  if(v>=35) return '#9bdc28';
+  return '#39d353';
+}
+
+function isVisibleHold(x,y){ return (wall[y]?.[x] ?? 0) >= 3; }
+
+function rebuildHolds(){
+  holdGroup.clear();
+  holdMeshes.clear();
+  const radius = (HEX / SQRT3) * 0.42;
+  const geo = new THREE.CylinderGeometry(radius, radius, 0.05, 6);
+  geo.rotateX(Math.PI/2);
+  geo.rotateZ(Math.PI/6);
+  for(let y=0;y<ROWS;y++) for(let x=0;x<COLS;x++){
+    const occupied = Object.values(limbs).some(p=>p.x===x&&p.y===y);
+    const visible = isVisibleHold(x,y);
+    const reachable = LIMB_ORDER.some(k=>candidateStateFor(k,x,y));
+    if(!visible && !occupied && !reachable) continue;
+    const mat = new THREE.MeshStandardMaterial({
+      color:0x737b86,
+      roughness:.55,
+      emissive:0x111111,
+      transparent:!visible && !occupied,
+      opacity: visible || occupied ? 1 : 0.55,
+    });
+    const m = new THREE.Mesh(geo, mat);
+    m.position.copy(gridToWorld(x,y));
+    m.userData = {gx:x, gy:y, ghost: !visible && !occupied};
+    m.castShadow = visible || occupied;
+    holdGroup.add(m);
+    holdMeshes.set(`${x},${y}`, m);
+  }
+}
+
+function updateHoldColors(){
+  const occupied = {};
+  for(const [k,p] of Object.entries(limbs)) occupied[`${p.x},${p.y}`] = k;
+  const limbColor = {LH:0x5aa9ff, RH:0x67c7ff, LF:0xc084fc, RF:0xff7ab6};
+  for(const [key, mesh] of holdMeshes){
+    const occ = occupied[key];
+    if(occ){
+      mesh.material.color.setHex(limbColor[occ]);
+      mesh.material.emissive.setHex(0x1a2a18);
+      mesh.scale.setScalar(1.25);
+      continue;
+    }
+    const [x,y] = key.split(',').map(Number);
+    const opts = availableAt(x,y);
+    const keys = Object.keys(opts);
+    if(!keys.length){
+      mesh.material.color.setHex(0x4a5560);
+      mesh.material.emissive.setHex(0x000000);
+      mesh.scale.setScalar(0.85);
+      continue;
+    }
+    const best = Math.min(...keys.map(k=>opts[k].load));
+    mesh.material.color.set(colorForLoad(best));
+    const hot = hovered && hovered.x===x && hovered.y===y;
+    mesh.material.emissive.setHex(hot ? 0x333333 : 0x111111);
+    mesh.scale.setScalar(hot ? 1.35 : 1);
+  }
+}
+
+function captureBind(root){
+  bindPose.clear();
+  root.updateMatrixWorld(true);
+  root.traverse(o=>{
+    if(o.isBone){
+      bindPose.set(o, {pos: o.position.clone(), quat: o.quaternion.clone()});
+    }
+  });
+}
+
+function resetBind(){
+  for(const [bone, pq] of bindPose){
+    bone.position.copy(pq.pos);
+    bone.quaternion.copy(pq.quat);
+  }
+}
+
+function applyWorldDelta(bone, delta){
+  const pos = new THREE.Vector3();
+  const scl = new THREE.Vector3();
+  bone.updateWorldMatrix(true, false);
+  bone.matrixWorld.decompose(pos, _qWorld, scl);
+  _qWorld.premultiply(delta);
+  if(bone.parent){
+    bone.parent.matrixWorld.decompose(pos, _qParent, scl);
+    bone.quaternion.copy(_qParent.invert().multiply(_qWorld));
+  } else {
+    bone.quaternion.copy(_qWorld);
+  }
+  bone.updateMatrix();
+  bone.updateWorldMatrix(true, true);
+}
+
+function rotateJointToward(bone, fromWorld, toWorld){
+  const origin = new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld);
+  const from = fromWorld.clone().sub(origin);
+  const to = toWorld.clone().sub(origin);
+  if(from.lengthSq()<1e-8 || to.lengthSq()<1e-8) return;
+  applyWorldDelta(bone, _q.setFromUnitVectors(from.normalize(), to.normalize()));
+}
+
+function twoBoneIK(upper, lower, effector, target, kneePrefer, alignRoll){
+  if(!upper || !lower || !effector) return;
+  upper.updateWorldMatrix(true, true);
+  const a = new THREE.Vector3().setFromMatrixPosition(upper.matrixWorld);
+  const b = new THREE.Vector3().setFromMatrixPosition(lower.matrixWorld);
+  const c = new THREE.Vector3().setFromMatrixPosition(effector.matrixWorld);
+  const lab = a.distanceTo(b);
+  const lbc = b.distanceTo(c);
+  const lat = Math.min(Math.max(a.distanceTo(target), Math.abs(lab-lbc)+0.01), lab+lbc-0.01);
+
+  const ac = target.clone().sub(a);
+  if(ac.lengthSq()<1e-8) return;
+  ac.normalize();
+  let bend = kneePrefer.clone().sub(a);
+  bend.addScaledVector(ac, -bend.dot(ac));
+  if(bend.lengthSq()<1e-8){
+    bend.crossVectors(ac, new THREE.Vector3(0, 0, 1));
+    if(bend.lengthSq()<1e-8) bend.set(1, 0, 0);
+  }
+  bend.normalize();
+
+  const cosA = THREE.MathUtils.clamp((lab*lab + lat*lat - lbc*lbc)/(2*lab*lat), -1, 1);
+  const sinA = Math.sqrt(Math.max(0, 1-cosA*cosA));
+  const newB = a.clone().addScaledVector(ac, cosA*lab).addScaledVector(bend, sinA*lab);
+
+  rotateJointToward(upper, b, newB);
+  lower.updateWorldMatrix(true, true);
+  const cNow = new THREE.Vector3().setFromMatrixPosition(effector.matrixWorld);
+  rotateJointToward(lower, cNow, target);
+
+  if(!alignRoll) return;
+
+  upper.updateWorldMatrix(true, true);
+  const a2 = new THREE.Vector3().setFromMatrixPosition(upper.matrixWorld);
+  const b2 = new THREE.Vector3().setFromMatrixPosition(lower.matrixWorld);
+  const hinge = new THREE.Vector3().crossVectors(b2.clone().sub(a2), target.clone().sub(a2));
+  if(hinge.lengthSq()>1e-8){
+    const xAxis = new THREE.Vector3(1, 0, 0);
+    const yAxis = new THREE.Vector3(0, 1, 0);
+    upper.updateWorldMatrix(true, false);
+    const qBone = new THREE.Quaternion().setFromRotationMatrix(upper.matrixWorld);
+    const boneY = yAxis.applyQuaternion(qBone).normalize();
+    const have = xAxis.applyQuaternion(qBone);
+    have.addScaledVector(boneY, -have.dot(boneY));
+    if(hinge.dot(have) < 0) hinge.negate();
+    const want = hinge.normalize();
+    want.addScaledVector(boneY, -want.dot(boneY));
+    if(have.lengthSq()>1e-8 && want.lengthSq()>1e-8){
+      applyWorldDelta(upper, new THREE.Quaternion().setFromUnitVectors(have.normalize(), want.normalize()));
+      lower.updateWorldMatrix(true, true);
+      const c3 = new THREE.Vector3().setFromMatrixPosition(effector.matrixWorld);
+      rotateJointToward(lower, c3, target);
+    }
+  }
+}
+
+function setBoneWorldAxes(bone, xWorld, yWorld){
+  if(!bone) return;
+  const y = yWorld.clone().normalize();
+  const x = xWorld.clone().addScaledVector(y, -xWorld.dot(y));
+  if(x.lengthSq()<1e-8) return;
+  x.normalize();
+  const z = new THREE.Vector3().crossVectors(x, y).normalize();
+  const m = new THREE.Matrix4().makeBasis(x, y, z);
+  const qWant = new THREE.Quaternion().setFromRotationMatrix(m);
+  bone.updateWorldMatrix(true, false);
+  const pos = new THREE.Vector3();
+  const scl = new THREE.Vector3();
+  bone.matrixWorld.decompose(pos, _qWorld, scl);
+  applyWorldDelta(bone, qWant.multiply(_qWorld.invert()));
+}
+
+function twistHandOnWall(hand, elbow, shoulder, wrist, wallDir){
+  if(!hand) return;
+  const up = new THREE.Vector3(0, 1, 0);
+  let dir = wrist.clone().sub(elbow);
+  dir.z = 0;
+  if(dir.lengthSq()<1e-6){
+    dir.copy(elbow).sub(shoulder);
+    dir.z = 0;
+  }
+  if(dir.lengthSq()<1e-6) return;
+  dir.normalize();
+  const ang = Math.atan2(
+    new THREE.Vector3().crossVectors(up, dir).dot(wallDir),
+    up.dot(dir)
+  );
+  if(Math.abs(ang)<1e-4) return;
+  applyWorldDelta(hand, new THREE.Quaternion().setFromAxisAngle(wallDir, ang));
+}
+
+function desiredChestZ(shoulder, hand){
+  const xy = Math.hypot(hand.x - shoulder.x, hand.y - shoulder.y);
+  const t = THREE.MathUtils.clamp(xy / 0.70, 0, 1);
+  return THREE.MathUtils.lerp(CHEST_MIN_Z, CHEST_MAX_Z, t);
+}
+
+function stanceSquat(state){
+  const handY = (planar(state.LH.x, state.LH.y).y + planar(state.RH.x, state.RH.y).y) / 2;
+  const footY = (planar(state.LF.x, state.LF.y).y + planar(state.RF.x, state.RF.y).y) / 2;
+  const span = Math.abs(footY - handY);
+  const b = currentBody();
+  return THREE.MathUtils.clamp((b.heightHex * 0.85 - span) / (b.heightHex * 0.5), 0, 1);
+}
+
+function pitchBone(bone, radians){
+  if(!bone || Math.abs(radians) < 1e-4) return;
+  applyWorldDelta(bone, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), radians));
+}
+
+function headBone(){
+  return bones.Head || bones.head || bones.neck_01 || null;
+}
+
+function ensureHeadClearance(){
+  const head = headBone();
+  if(!head) return;
+  head.updateWorldMatrix(true, false);
+  const z = new THREE.Vector3().setFromMatrixPosition(head.matrixWorld).z;
+  const faceZ = z - 0.10;
+  if(faceZ < HEAD_MIN_Z){
+    characterRoot.position.z += HEAD_MIN_Z - faceZ;
+    characterRoot.updateMatrixWorld(true);
+  }
+}
+
+function limbWorld(state, key, z){
+  const limb = state[key];
+  if(limb.px != null && limb.py != null) return planarToWorld(limb.px, limb.py, z);
+  return gridToWorld(limb.x, limb.y, z);
+}
+
+function applyCharacter(state){
+  if(!characterRoot || !bones.pelvis) return;
+  resetBind();
+  characterRoot.position.set(0,0,0);
+  characterRoot.rotation.set(0, Math.PI, 0);
+  characterRoot.updateMatrixWorld(true);
+
+  const p = bodyPose(state);
+  const squat = stanceSquat(state);
+  const footL0 = planar(state.LF.x, state.LF.y);
+  const footR0 = planar(state.RF.x, state.RF.y);
+  const footAvgY = (footL0.y + footR0.y) / 2;
+  const hipHeightHex = THREE.MathUtils.lerp(rig.hipToFoot, hipSquat(), squat) / HEX;
+  const hip = planarToWorld(p.hip.x, footAvgY - hipHeightHex, HIP_IN_Z);
+  hip.z -= squat * 0.05;
+
+  const pelvisNow = new THREE.Vector3().setFromMatrixPosition(bones.pelvis.matrixWorld);
+  characterRoot.position.add(hip.clone().sub(pelvisNow));
+  characterRoot.updateMatrixWorld(true);
+
+  pitchBone(bones.pelvis, squat * -0.22);
+  pitchBone(bones.spine_01, -0.08);
+  pitchBone(bones.spine_02, -0.06);
+  pitchBone(bones.spine_03, -0.03);
+  pitchBone(bones.neck_01, 0.02);
+  pitchBone(bones.Head || bones.head, 0.02);
+  characterRoot.updateMatrixWorld(true);
+
+  const lift = (key)=>{
+    if(!anim || anim.limb!==key) return HOLD_Z;
+    return HOLD_Z + Math.sin(anim.t * Math.PI) * 0.1;
+  };
+  const handL = limbWorld(state, 'LH', lift('LH'));
+  const handR = limbWorld(state, 'RH', lift('RH'));
+  const shL0 = new THREE.Vector3().setFromMatrixPosition(bones.upperarm_l.matrixWorld);
+  const shR0 = new THREE.Vector3().setFromMatrixPosition(bones.upperarm_r.matrixWorld);
+  const wantZ = (desiredChestZ(shL0, handL) + desiredChestZ(shR0, handR)) * 0.5;
+  const haveZ = (shL0.z + shR0.z) * 0.5;
+  characterRoot.position.z += wantZ - haveZ;
+  characterRoot.updateMatrixWorld(true);
+  ensureHeadClearance();
+
+  const left = new THREE.Vector3(-1, 0, 0);
+  const wallDir = new THREE.Vector3(0, 0, -1);
+  const cam = new THREE.Vector3(0, 0, 1);
+
+  const thighL = new THREE.Vector3().setFromMatrixPosition(bones.thigh_l.matrixWorld);
+  const thighR = new THREE.Vector3().setFromMatrixPosition(bones.thigh_r.matrixWorld);
+  const armL = new THREE.Vector3().setFromMatrixPosition(bones.upperarm_l.matrixWorld);
+  const armR = new THREE.Vector3().setFromMatrixPosition(bones.upperarm_r.matrixWorld);
+  const footL = limbWorld(state, 'LF', lift('LF'));
+  const footR = limbWorld(state, 'RF', lift('RF'));
+
+  const kneeZ = HOLD_Z + THREE.MathUtils.lerp(0.08, 0.02, squat);
+  const kneeLift = 0.32 + squat * 0.08;
+  const kneeL = new THREE.Vector3(
+    thighL.x * 0.25 + footL.x * 0.75 - 0.10,
+    footL.y + kneeLift,
+    kneeZ
+  );
+  const kneeR = new THREE.Vector3(
+    thighR.x * 0.25 + footR.x * 0.75 + 0.10,
+    footR.y + kneeLift,
+    kneeZ
+  );
+  twoBoneIK(bones.thigh_l, bones.calf_l, bones.foot_l, footL, kneeL, true);
+  twoBoneIK(bones.thigh_r, bones.calf_r, bones.foot_r, footR, kneeR, true);
+
+  const elbowL = new THREE.Vector3(
+    Math.min(handL.x, armL.x) - 0.26,
+    (armL.y + handL.y) * 0.5 - 0.04,
+    THREE.MathUtils.lerp(armL.z, HOLD_Z, 0.55)
+  );
+  const elbowR = new THREE.Vector3(
+    Math.max(handR.x, armR.x) + 0.26,
+    (armR.y + handR.y) * 0.5 - 0.04,
+    THREE.MathUtils.lerp(armR.z, HOLD_Z, 0.55)
+  );
+  twoBoneIK(bones.upperarm_l, bones.lowerarm_l, bones.hand_l, handL, elbowL);
+  twoBoneIK(bones.upperarm_r, bones.lowerarm_r, bones.hand_r, handR, elbowR);
+
+  bones.upperarm_l.updateWorldMatrix(true, true);
+  bones.upperarm_r.updateWorldMatrix(true, true);
+  const shL = new THREE.Vector3().setFromMatrixPosition(bones.upperarm_l.matrixWorld);
+  const shR = new THREE.Vector3().setFromMatrixPosition(bones.upperarm_r.matrixWorld);
+  const elL = new THREE.Vector3().setFromMatrixPosition(bones.lowerarm_l.matrixWorld);
+  const elR = new THREE.Vector3().setFromMatrixPosition(bones.lowerarm_r.matrixWorld);
+  const wrL = new THREE.Vector3().setFromMatrixPosition(bones.hand_l.matrixWorld);
+  const wrR = new THREE.Vector3().setFromMatrixPosition(bones.hand_r.matrixWorld);
+
+  const up = new THREE.Vector3(0, 1, 0);
+  setBoneWorldAxes(bones.hand_l, wallDir, up);
+  setBoneWorldAxes(bones.hand_r, cam, up);
+  twistHandOnWall(bones.hand_l, elL, shL, wrL, wallDir);
+  twistHandOnWall(bones.hand_r, elR, shR, wrR, wallDir);
+  setBoneWorldAxes(bones.foot_l, left, wallDir);
+  setBoneWorldAxes(bones.foot_r, left, wallDir);
+
+  characterRoot.updateMatrixWorld(true);
+  for(const mesh of skinnedMeshes) mesh.skeleton.update();
+  updatePoseHud(state);
+}
+
+function ease(t){ return t<.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2; }
+
+function lerpState(a, b, t){
+  const out = cloneState(b);
+  for(const k of LIMB_ORDER){
+    const pa = planar(a[k].x, a[k].y);
+    const pb = planar(b[k].x, b[k].y);
+    out[k].px = pa.x + (pb.x - pa.x) * t;
+    out[k].py = pa.y + (pb.y - pa.y) * t;
+    out[k].x = t < 1 ? a[k].x : b[k].x;
+    out[k].y = t < 1 ? a[k].y : b[k].y;
+  }
+  return out;
+}
+
+function supportName(n){
+  if(n >= 4) return '4点 安定';
+  if(n === 3) return '3点 通常';
+  if(n === 2) return '2点 高負荷';
+  if(n === 1) return '1点 高負荷';
+  return '0点 落下';
+}
+
+function updateHud(){
+  const l = calcLoad(limbs);
+  loadValue.textContent = `${l.total}%`;
+  loadBar.style.width = `${Math.min(100,l.total)}%`;
+  loadBar.style.background = colorForLoad(l.total);
+  badge.textContent = fell ? '落下' : l.total>=85 ? '危険' : l.total>=60 ? '不安定' : supportName(l.supportCount);
+  badge.className = 'small ' + (fell || l.total>=85 ? 'bad' : l.total>=60 ? 'warn' : 'ok');
+  updatePoseHud(displayLimbs || limbs);
+}
+
+function startMove(limb, next){
+  anim = {from: cloneState(limbs), to: next, limb, t:0};
+  limbs = next;
+}
+
+function tryMove(limb){
+  if(!hovered || fell || anim) return;
+  const st = candidateStateFor(limb, hovered.x, hovered.y);
+  if(!st){
+    statusEl.innerHTML = `<span class="warn">${limbNames[limb]} はその位置に届きません</span>`;
+    return;
+  }
+  st[limb].moveOrder = ++moveCounter;
+  const load = calcLoad(st, limb).total;
+  startMove(limb, st);
+  hovered = null;
+  if(load>=100){
+    fell = true;
+    gameOverText.textContent = `負荷 ${load}% で落下しました。`;
+    gameOver.classList.remove('hidden');
+    statusEl.innerHTML = `<span class="bad">${limbNames[limb]} を移動 → 落下</span>`;
+  } else {
+    statusEl.innerHTML = `<span class="ok">${limbNames[limb]} を移動 → 負荷 ${load}%</span>`;
+  }
+  rebuildHolds();
+  updateHoldColors();
+  updateHud();
+}
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+function pickHold(e){
+  const r = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((e.clientX-r.left)/r.width)*2-1;
+  pointer.y = -((e.clientY-r.top)/r.height)*2+1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(holdGroup.children, false);
+  if(!hits.length) return null;
+  const {gx, gy} = hits[0].object.userData;
+  return {x:gx, y:gy};
+}
+
+renderer.domElement.addEventListener('mousemove', e=>{
+  if(fell || anim) return;
+  const hit = pickHold(e);
+  const next = hit && Object.keys(availableAt(hit.x, hit.y)).length ? hit : null;
+  if((hovered?.x??null)!==(next?.x??null) || (hovered?.y??null)!==(next?.y??null)){
+    hovered = next;
+    updateHoldColors();
+    if(hovered){
+      const opts = availableAt(hovered.x, hovered.y);
+      const bits = LIMB_ORDER.map(k=>{
+        const key = {LH:'Q',RH:'E',LF:'A',RF:'D'}[k];
+        return opts[k] ? `${key}:${opts[k].load}%` : `${key}:--`;
+      });
+      statusEl.innerHTML = bits.join(' / ');
+    }
+  }
+});
+
+window.addEventListener('keydown', e=>{
+  if(fell) return;
+  const limb = limbKeys[e.key.toLowerCase()];
+  if(!limb) return;
+  e.preventDefault();
+  if(!hovered){
+    statusEl.innerHTML = '<span class="warn">先に移動先のホールド／Hexへマウスを合わせてください</span>';
+    return;
+  }
+  tryMove(limb);
+});
+
+function updateBodySpecUI(){
+  const female = bodyType === 'female';
+  document.getElementById('femaleBtn').classList.toggle('active', female);
+  document.getElementById('maleBtn').classList.toggle('active', !female);
+  for(const id of ['specFHeight','specFHH','specFFF','specFHF']){
+    document.getElementById(id).classList.toggle('on', female);
+  }
+  for(const id of ['specMHeight','specMHH','specMFF','specMHF']){
+    document.getElementById(id).classList.toggle('on', !female);
+  }
+}
+
+function applyBodyScale(){
+  if(!characterRoot) return;
+  characterRoot.scale.setScalar(1);
+  characterRoot.updateMatrixWorld(true);
+  const h = nativeModelHeight || 1;
+  characterRoot.scale.setScalar(playerHeight() / h);
+  characterRoot.updateMatrixWorld(true);
+  captureBind(characterRoot);
+  measureRig(characterRoot);
+}
+
+function setBodyType(next){
+  bodyType = next;
+  updateBodySpecUI();
+  applyBodyScale();
+  resetPose();
+  rebuildHolds();
+  updateHoldColors();
+  updateHud();
+  if(characterRoot) applyCharacter(displayLimbs);
+  statusEl.innerHTML = `<span class="ok">${currentBody().label} ${currentBody().heightCm}cm に切り替えました</span>`;
+}
+
+const hudPanel = document.getElementById('hudPanel');
+const panelOpen = document.getElementById('panelOpen');
+function setPanelOpen(open){
+  hudPanel.classList.toggle('hidden', !open);
+  panelOpen.classList.toggle('hidden', open);
+}
+document.getElementById('panelClose').onclick = ()=> setPanelOpen(false);
+panelOpen.onclick = ()=> setPanelOpen(true);
+document.getElementById('femaleBtn').onclick = ()=> setBodyType('female');
+document.getElementById('maleBtn').onclick = ()=> setBodyType('male');
+
+document.getElementById('resetBtn').onclick = ()=>{
+  resetPose(); rebuildHolds(); updateHoldColors(); updateHud();
+  if(characterRoot) applyCharacter(displayLimbs);
+  statusEl.innerHTML = '<span class="ok">姿勢をリセットしました</span>';
+};
+document.getElementById('regenBtn').onclick = ()=>{
+  makeWall(); resetPose(); rebuildHolds(); updateHoldColors(); updateHud();
+  if(characterRoot) applyCharacter(displayLimbs);
+  statusEl.innerHTML = '<span class="ok">壁を再生成しました</span>';
+};
+document.getElementById('restartBtn').onclick = ()=>{
+  resetPose(); rebuildHolds(); updateHoldColors(); updateHud();
+  if(characterRoot) applyCharacter(displayLimbs);
+};
+
+function measureNativeHeight(root){
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  if(skinnedMeshes.length){
+    for(const mesh of skinnedMeshes) box.expandByObject(mesh);
+  } else {
+    box.setFromObject(root);
+  }
+  return Math.max(1e-4, box.max.y - box.min.y);
+}
+
+function measureRig(root){
+  root.updateMatrixWorld(true);
+  if(!bones.pelvis || !bones.foot_l || !bones.foot_r){
+    rig.hipToFoot = hipStanding();
+    return;
+  }
+  const pelvis = new THREE.Vector3().setFromMatrixPosition(bones.pelvis.matrixWorld);
+  const footL = new THREE.Vector3().setFromMatrixPosition(bones.foot_l.matrixWorld);
+  const footR = new THREE.Vector3().setFromMatrixPosition(bones.foot_r.matrixWorld);
+  rig.hipToFoot = Math.max(hipSquat() + 0.05, pelvis.y - (footL.y + footR.y) * 0.5);
+}
+
+function bindCharacter(root){
+  bones = {};
+  skinnedMeshes = [];
+  characterRoot = root;
+  root.traverse(o=>{
+    if(o.isBone) bones[o.name] = o;
+    if(o.isMesh){
+      o.castShadow = true;
+      o.receiveShadow = true;
+      o.frustumCulled = false;
+      if(o.isSkinnedMesh) skinnedMeshes.push(o);
+    }
+  });
+  nativeModelHeight = measureNativeHeight(root);
+  applyBodyScale();
+}
+
+const loader = new GLTFLoader();
+loader.load(
+  QUATERNIUS_MODEL,
+  gltf=>{
+    scene.add(gltf.scene);
+    bindCharacter(gltf.scene);
+    applyCharacter(displayLimbs);
+    loadingEl.textContent = 'Hexポーズ切替';
+    statusEl.innerHTML = '<span class="ok">ホールドにマウスを合わせて Q/E/A/D</span>';
+  },
+  undefined,
+  err=>{
+    loadingEl.textContent = 'モデル読込失敗。グリッド操作は可能です。';
+    statusEl.innerHTML = '<span class="warn">' + err.message + '</span>';
+  }
+);
+
+buildHexGrid();
+makeWall();
+resetPose();
+rebuildHolds();
+updateHoldColors();
+updateBodySpecUI();
+updateHud();
+
+let prev = performance.now();
+function animate(now){
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.05, (now-prev)/1000);
+  prev = now;
+  if(anim){
+    anim.t = Math.min(1, anim.t + dt*1000/MOVE_MS);
+    displayLimbs = lerpState(anim.from, anim.to, ease(anim.t));
+    applyCharacter(displayLimbs);
+    if(anim.t>=1){
+      displayLimbs = cloneState(limbs);
+      anim = null;
+      applyCharacter(displayLimbs);
+      rebuildHolds();
+      updateHoldColors();
+    }
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(animate);
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

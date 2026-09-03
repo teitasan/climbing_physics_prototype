@@ -23,10 +23,10 @@ func begin(skel: Skeleton3D, stop_tree: Callable, pose_hang_base: Callable) -> v
 	clear()
 	if skel == null:
 		return
-	if stop_tree.is_valid():
-		stop_tree.call()
 	skel.force_update_all_bone_transforms()
 	_store(skel, from_rot, from_pos)
+	if stop_tree.is_valid():
+		stop_tree.call()
 	if pose_hang_base.is_valid():
 		pose_hang_base.call()
 	skel.force_update_all_bone_transforms()

@@ -24,12 +24,21 @@ var jump_grab_until := 0.0
 var spawn_position := Vector3(0, 1, 0)
 var debug_enabled := false
 var ik_weight := 0.0
+var ik_foot_l := 0.0
+var ik_foot_r := 0.0
 var grab_alpha := 0.0
 var hang_motion_t := 0.0
 var hang_style: int = ClimbTarget.HangStyle.BRACED
 var active_target: ClimbTarget
 var last_hang_target: ClimbTarget
 var time_now := 0.0
+var contacts_ready := false
+var contact_lh := Vector3.ZERO
+var contact_rh := Vector3.ZERO
+var contact_lf := Vector3.ZERO
+var contact_rf := Vector3.ZERO
+var traverse_phase := ""
+var traverse_side := 0.0
 
 
 func _ready() -> void:
@@ -140,6 +149,12 @@ func intent_flat() -> Vector3:
 	return camera_rig.flat_forward()
 
 
+func hang_strafe_sign() -> float:
+	if absf(input_vec.x) < 0.18:
+		return 0.0
+	return signf(input_vec.x)
+
+
 func visual_facing() -> Vector3:
 	return visuals.facing_dir()
 
@@ -225,8 +240,13 @@ func reset_to_spawn() -> void:
 	velocity = Vector3.ZERO
 	active_target = null
 	ik_weight = 0.0
+	ik_foot_l = 0.0
+	ik_foot_r = 0.0
 	grab_alpha = 0.0
 	hang_motion_t = 0.0
+	contacts_ready = false
+	traverse_phase = ""
+	traverse_side = 0.0
 	drop_lock_until = 0.0
 	no_regrab_until = 0.0
 	jump_grab_until = 0.0
@@ -251,3 +271,45 @@ func hang_to(target: ClimbTarget, align: float = 1.0) -> void:
 	visuals.rotation.y = visuals.facing_yaw
 	active_target = target
 	hang_style = target.hang_style
+	if state_name() != "Traverse":
+		seed_contacts(target)
+
+
+func seed_contacts(target: ClimbTarget) -> void:
+	if target == null:
+		contacts_ready = false
+		return
+	contact_lh = target.hand_left
+	contact_rh = target.hand_right
+	contact_lf = target.foot_left
+	contact_rf = target.foot_right
+	contacts_ready = true
+
+
+func contact_of(limb_id: int) -> Vector3:
+	match limb_id:
+		Limb.Id.LEFT_HAND:
+			return contact_lh
+		Limb.Id.RIGHT_HAND:
+			return contact_rh
+		Limb.Id.LEFT_FOOT:
+			return contact_lf
+		Limb.Id.RIGHT_FOOT:
+			return contact_rf
+		_:
+			return Vector3.ZERO
+
+
+func set_contact(limb_id: int, point: Vector3) -> void:
+	contacts_ready = true
+	match limb_id:
+		Limb.Id.LEFT_HAND:
+			contact_lh = point
+		Limb.Id.RIGHT_HAND:
+			contact_rh = point
+		Limb.Id.LEFT_FOOT:
+			contact_lf = point
+		Limb.Id.RIGHT_FOOT:
+			contact_rf = point
+		_:
+			pass

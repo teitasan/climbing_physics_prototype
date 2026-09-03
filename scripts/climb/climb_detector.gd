@@ -93,8 +93,8 @@ func query(opts: Dictionary = {}) -> ClimbTarget:
 func query_along_ledge(current: ClimbTarget, side: float, step_m: float = 0.28) -> ClimbTarget:
 	if current == null:
 		return null
-	var tangent := current.tangent() * signf(side)
-	var origin := current.hang_pelvis + tangent * step_m + current.wall_normal * 0.05
+	var along := current.along_right() * signf(side)
+	var origin := current.hang_pelvis + along * step_m + current.wall_normal * 0.05
 	var found := query({
 		"origin": origin + Vector3.DOWN * 0.2,
 		"facing": current.facing_dir(),
@@ -119,11 +119,10 @@ func query_jump(origin: Vector3, dir: Vector3) -> ClimbTarget:
 
 
 func _try_corner(current: ClimbTarget, side: float) -> ClimbTarget:
-	var tangent := current.tangent() * signf(side)
 	var space := player.get_world_3d().direct_space_state
 	var exclude := [player.get_rid()]
 	var start := current.ledge_point + Vector3.UP * 0.08 + current.wall_normal * 0.18
-	var around := (tangent * 0.45 + current.wall_normal * 0.35).normalized()
+	var around := (current.along_right() * signf(side) * 0.45 + current.wall_normal * 0.35).normalized()
 	var wall := _ray(
 		space,
 		start + around * 0.05,
@@ -169,9 +168,9 @@ func _build_target(
 	target.ledge_height_from_feet = ledge.y - feet.y
 	var sockets := player.limb_sockets_world()
 	var hand_span := player.body.hand_span_m
-	var tangent := target.tangent()
-	target.hand_left = ledge - tangent * hand_span
-	target.hand_right = ledge + tangent * hand_span
+	var right := target.along_right()
+	target.hand_left = ledge - right * hand_span
+	target.hand_right = ledge + right * hand_span
 	var left_ok: bool = reach.can_reach(sockets[Limb.Id.LEFT_HAND], target.hand_left, Limb.Id.LEFT_HAND, extra_range)
 	var right_ok: bool = reach.can_reach(sockets[Limb.Id.RIGHT_HAND], target.hand_right, Limb.Id.RIGHT_HAND, extra_range)
 	if not left_ok and not right_ok:
@@ -180,10 +179,10 @@ func _build_target(
 		return null
 	# One-handed stretch still counts — game feel.
 	if not left_ok:
-		target.hand_left = target.hand_right - tangent * (hand_span * 0.7)
+		target.hand_left = target.hand_right - right * (hand_span * 0.7)
 		target.debug_notes.append("left_hand_stretch")
 	if not right_ok:
-		target.hand_right = target.hand_left + tangent * (hand_span * 0.7)
+		target.hand_right = target.hand_left + right * (hand_span * 0.7)
 		target.debug_notes.append("right_hand_stretch")
 	var nearer_hand: Vector3 = target.hand_left
 	if sockets[Limb.Id.RIGHT_HAND].distance_to(target.hand_right) < sockets[Limb.Id.LEFT_HAND].distance_to(target.hand_left):
@@ -309,11 +308,11 @@ func _classify_hang(space: PhysicsDirectSpaceState3D, ledge: Vector3, wall_n: Ve
 
 
 func _place_feet(space: PhysicsDirectSpaceState3D, target: ClimbTarget, exclude: Array) -> void:
-	var tangent := target.tangent()
+	var right := target.along_right()
 	var hip := target.hang_pelvis
 	for i in 2:
 		var side := -1.0 if i == 0 else 1.0
-		var start := hip + tangent * (0.11 * side) + Vector3.DOWN * 0.12 + target.wall_normal * 0.08
+		var start := hip + right * (0.11 * side) + Vector3.DOWN * 0.12 + target.wall_normal * 0.08
 		var hit := _ray(
 			space,
 			start,
@@ -326,7 +325,7 @@ func _place_feet(space: PhysicsDirectSpaceState3D, target: ClimbTarget, exclude:
 		if hit.hit:
 			pos = hit.hit_pos + hit.hit_normal * 0.03
 		else:
-			pos = hip + tangent * (0.1 * side) + Vector3.DOWN * 0.85 + target.wall_normal * 0.05
+			pos = hip + right * (0.1 * side) + Vector3.DOWN * 0.85 + target.wall_normal * 0.05
 		if i == 0:
 			target.foot_left = pos
 		else:

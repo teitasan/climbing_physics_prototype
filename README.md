@@ -77,9 +77,10 @@ Player (CharacterBody3D)
 ```
 Player State
  → AnimationTree（Locomotion は m/s の BlendSpace + TimeScale。JumpStart / JumpLoop / JumpLand は travel + cross fade）
- → LedgeGrab 時は Jump 姿勢を保持して Hang へ 0.2 秒補間 + 手 IK（0→1）
+ → LedgeGrab 時は Jump 姿勢を保持して Hang へ 0.2 秒補間 + 手 IK
  → Hang は基礎ポーズ + 呼吸/揺れ + 手 IK
- → TwoBoneIK（登攀中の手。地上ではオフ）
+ → Traverse は左手→骨盤→左足→右手→右足の順で約 30cm ずつ動かす
+ → TwoBoneIK（登攀中の手。Traverse 中の移動脚にも一時的に）
 ```
 
 ヘッドレス確認に `godot --headless --path . -s res://tools/check_anim.gd` を追加できます。
@@ -112,15 +113,16 @@ Quaternius Regular Male / Female を使う場合は `assets/characters/README.tx
 ## 現時点の制限
 
 - Hang / Mantle は Standard パックにクリップが無いため、まだプロシージャル。LedgeGrab は Jump 姿勢を 0.2 秒で Hang へ補間する
+- Traverse は 30cm ステップの四肢順移動（25cm Hex にはまだしていない）
 - コーナー回り込みは簡易。複雑な凹凸や連続ホールド移動は未実装
 - 身長・腕長による到達差は BodyProfile まで。Hex グリッド化は未適用
-- 登攀中の手は TwoBoneIK。地上の足裏合わせと足 IK は未実装
+- 登攀中の手は TwoBoneIK。地上の足裏合わせは未実装
 - スタミナ / ロープ / 山岳生成 / 戦闘は対象外
 
 ## 次に改善すべきポイント
 
-1. Hang Idle の二次モーション（呼吸・揺れ）と手 IK の見た目調整
-2. Traverse を一塊の平行移動ではなく、四肢の順次移動（25cm Reach）にする
-3. Mantle（カプセル・骨盤・手足を棚上へ同期）
-4. Jump Grab / Dyno
+1. Traverse の四肢タイミングと到達（25cm Reach）の見た目調整
+2. Mantle（カプセル・骨盤・手足を棚上へ同期）
+3. Jump Grab / Dyno
+4. Hang Idle の二次モーション強化
 5. Hang / Mantle の実クリップは後回し（Standard には無い）

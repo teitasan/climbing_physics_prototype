@@ -49,6 +49,17 @@ func facing_dir() -> Vector3:
 	return (-wall_normal).normalized()
 
 
+func along_right() -> Vector3:
+	var f := facing_dir()
+	f.y = 0.0
+	if f.length_squared() < 0.0001:
+		return tangent()
+	var r := Vector3.UP.cross(f)
+	if r.length_squared() < 0.0001:
+		return Vector3.RIGHT
+	return r.normalized()
+
+
 func limb_target(limb_id: int) -> Vector3:
 	match limb_id:
 		Limb.Id.LEFT_HAND:

@@ -37,6 +37,7 @@ func _run() -> void:
 		return
 
 	await _test_grab_mantle(player)
+	await _test_traverse(player)
 	await _test_jump_grab(player)
 	await _test_hang_styles(player)
 	print("PLAYTEST_OK")
@@ -97,6 +98,98 @@ func _test_grab_mantle(player: Player) -> void:
 		quit(1)
 		return
 	_hold("move_forward", false)
+
+
+func _test_traverse(player: Player) -> void:
+	player.reset_to_spawn()
+	for i in 12:
+		await physics_frame
+	player.global_position = Vector3(0.0, 0.4, 28.9)
+	player.velocity = Vector3(0, 0, 3.5)
+	player.visuals.snap_facing(Vector3(0.0, 0.0, 1.0))
+	player.camera_rig.yaw = PI
+	_hold("move_forward", true)
+	_press("jump")
+	for i in 90:
+		await physics_frame
+		if player.state_name() == "Hang":
+			break
+	_hold("move_forward", false)
+	print("TRAV_HANG state=", player.state_name(), " pos=", player.global_position)
+	var along_r := Vector3.RIGHT
+	if player.active_target:
+		along_r = player.active_target.along_right()
+		print("TRAV_AXIS along_r=", along_r, " lh=", player.contact_lh, " rh=", player.contact_rh)
+	if player.state_name() != "Hang":
+		push_error("Traverse setup hang failed")
+		quit(1)
+		return
+	for i in 8:
+		await physics_frame
+	_hold("move_right", true)
+	var start := player.global_position
+	player.camera_rig.yaw = PI
+	var seen := {}
+	var phases := {}
+	var hand0 := Vector3.ZERO
+	var pel0 := Vector3.ZERO
+	var hand1 := Vector3.ZERO
+	var pel1 := Vector3.ZERO
+	var armed := false
+	var first_hand_done := false
+	for i in 50:
+		await physics_frame
+		seen[player.state_name()] = true
+		var ph := player.traverse_phase
+		if ph != "":
+			phases[ph] = true
+		if ph == "lead_hand" and not first_hand_done:
+			var lead := player.contact_lh if player.traverse_side < 0.0 else player.contact_rh
+			if not armed:
+				hand0 = lead
+				pel0 = player.global_position
+				armed = true
+			hand1 = lead
+			pel1 = player.global_position
+		elif armed:
+			first_hand_done = true
+	var mid := player.global_position
+	player.camera_rig.yaw = 0.0
+	for i in 50:
+		await physics_frame
+		seen[player.state_name()] = true
+		var ph2 := player.traverse_phase
+		if ph2 != "":
+			phases[ph2] = true
+	_hold("move_right", false)
+	var end := player.global_position
+	print("TRAV seen=", seen.keys(), " phases=", phases.keys(), " pos=", end)
+	print("TRAV_LEAD hand=", hand0.distance_to(hand1), " pelvis=", pel0.distance_to(pel1), " armed=", armed, " side=", player.traverse_side)
+	print("TRAV_DIR along_r=", along_r, " behind=", along_r.dot(mid - start), " flipped=", along_r.dot(end - mid))
+	if not seen.has("Traverse"):
+		push_error("Traverse did not run")
+		quit(1)
+		return
+	if not phases.has("lead_hand") or not phases.has("pelvis"):
+		push_error("Traverse did not sequence limbs, phases=" + str(phases.keys()))
+		quit(1)
+		return
+	if along_r.dot(mid - start) < 0.10:
+		push_error("D should move to the character's right, ignoring camera")
+		quit(1)
+		return
+	if along_r.dot(end - mid) < 0.10:
+		push_error("D must keep the same ledge direction after the camera turns")
+		quit(1)
+		return
+	if armed and pel0.distance_to(pel1) > 0.06:
+		push_error("Pelvis should hold still while the lead hand reaches")
+		quit(1)
+		return
+	if armed and hand0.distance_to(hand1) < 0.08:
+		push_error("Lead hand did not travel during its phase")
+		quit(1)
+		return
 
 
 func _test_jump_grab(player: Player) -> void:

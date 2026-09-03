@@ -18,6 +18,7 @@ func enter(_prev: String, data: Dictionary = {}) -> void:
 	if target:
 		player.hang_to(target, 1.0)
 		player.ik_weight = GameFeel.HANG_IK_MAX
+		player.seed_contacts(target)
 
 
 func physics_update(delta: float) -> void:
@@ -64,6 +65,7 @@ func _drop() -> void:
 	player.velocity = push + Vector3.DOWN * 0.4
 	player.ik_weight = 0.0
 	player.active_target = null
+	player.contacts_ready = false
 	player.hang_motion_t = 0.0
 	machine.change("Falling")
 

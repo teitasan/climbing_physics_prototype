@@ -19,6 +19,7 @@ func enter(_prev: String, data: Dictionary = {}) -> void:
 	if _target:
 		player.active_target = _target
 		player.hang_style = _target.hang_style
+		player.seed_contacts(_target)
 	# Keep the current AnimationTree pose. Do not reset the skeleton.
 	player.visuals.begin_grab()
 

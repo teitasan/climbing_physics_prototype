@@ -489,6 +489,15 @@ func _apply_hang_extras(motion_t: float) -> void:
 	_set_rot("Chest", Vector3(breath * 0.55, 0.0, 0.0))
 	_set_rot("Hips", Vector3(0.0, sway, 0.0))
 	_set_rot("Head", Vector3(-breath * 0.25, -sway * 0.45, 0.0))
+	if player.state_name() == "Traverse":
+		var lean := player.traverse_side * 0.06
+		if player.traverse_phase == "lead_hand":
+			lean *= 1.35
+		elif player.traverse_phase == "pelvis":
+			lean *= 1.1
+		_set_rot("Hips", Vector3(0.0, sway + lean, 0.0))
+		_set_rot("Chest", Vector3(breath * 0.55, lean * 0.25, 0.0))
+		_set_rot("Head", Vector3(-breath * 0.25, -sway * 0.45 - lean * 0.15, 0.0))
 	if braced:
 		_set_rot("LeftUpLeg", Vector3(0.4 + lag * 0.25, 0.0, 0.0))
 		_set_rot("RightUpLeg", Vector3(0.4 - lag * 0.25, 0.0, 0.0))
@@ -500,7 +509,12 @@ func _apply_hang_extras(motion_t: float) -> void:
 		_set_rot("LeftLeg", Vector3(0.12 + lag * 0.2, 0.0, 0.0))
 		_set_rot("RightLeg", Vector3(0.12 - lag * 0.2, 0.0, 0.0))
 	if player.state_name() == "Traverse":
-		_set_rot("Hips", Vector3(0.0, sway + sin(motion_t * 6.0) * 0.05, 0.0))
+		if player.traverse_phase == "lead_foot" or player.traverse_phase == "trail_foot":
+			var kick := 0.16 if player.traverse_phase == "lead_foot" else 0.10
+			if player.traverse_side < 0.0:
+				_set_rot("LeftUpLeg", Vector3((0.4 if braced else 0.08) + kick, 0.0, 0.0))
+			else:
+				_set_rot("RightUpLeg", Vector3((0.4 if braced else 0.08) + kick, 0.0, 0.0))
 
 
 func _mantle_pose(_delta: float) -> void:
@@ -535,12 +549,36 @@ func _apply_ik() -> void:
 	if w <= 0.01 or skeleton == null:
 		return
 	var t := player.active_target
-	if t == null:
+	if t == null and not player.contacts_ready:
 		return
-	var pole_l := t.ledge_point + t.wall_normal * 0.45 + Vector3.DOWN * 0.2 - t.tangent() * 0.3
-	var pole_r := t.ledge_point + t.wall_normal * 0.45 + Vector3.DOWN * 0.2 + t.tangent() * 0.3
-	TwoBoneIK.apply(skeleton, int(_bone.get("LeftArm", -1)), int(_bone.get("LeftForeArm", -1)), int(_bone.get("LeftHand", -1)), t.hand_left, pole_l, w)
-	TwoBoneIK.apply(skeleton, int(_bone.get("RightArm", -1)), int(_bone.get("RightForeArm", -1)), int(_bone.get("RightHand", -1)), t.hand_right, pole_r, w)
+	var lh := player.contact_lh if player.contacts_ready else (t.hand_left if t else Vector3.ZERO)
+	var rh := player.contact_rh if player.contacts_ready else (t.hand_right if t else Vector3.ZERO)
+	var wall_n := t.wall_normal if t else Vector3.FORWARD
+	var ledge := t.ledge_point if t else lh.lerp(rh, 0.5)
+	var tan := t.along_right() if t else Vector3.RIGHT
+	var pole_l := ledge + wall_n * 0.45 + Vector3.DOWN * 0.2 - tan * 0.3
+	var pole_r := ledge + wall_n * 0.45 + Vector3.DOWN * 0.2 + tan * 0.3
+	TwoBoneIK.apply(skeleton, int(_bone.get("LeftArm", -1)), int(_bone.get("LeftForeArm", -1)), int(_bone.get("LeftHand", -1)), lh, pole_l, w)
+	TwoBoneIK.apply(skeleton, int(_bone.get("RightArm", -1)), int(_bone.get("RightForeArm", -1)), int(_bone.get("RightHand", -1)), rh, pole_r, w)
+	var lf_w := w * player.ik_foot_l
+	var rf_w := w * player.ik_foot_r
+	if lf_w > 0.01:
+		var lf := player.contact_lf if player.contacts_ready else (t.foot_left if t else Vector3.ZERO)
+		var pole_lf := lf + wall_n * 0.35 + Vector3.DOWN * 0.08 - tan * 0.12
+		TwoBoneIK.apply(skeleton, int(_bone.get("LeftUpLeg", -1)), int(_bone.get("LeftLeg", -1)), int(_bone.get("LeftFoot", -1)), lf, pole_lf, lf_w)
+	if rf_w > 0.01:
+		var rf := player.contact_rf if player.contacts_ready else (t.foot_right if t else Vector3.ZERO)
+		var pole_rf := rf + wall_n * 0.35 + Vector3.DOWN * 0.08 + tan * 0.12
+		TwoBoneIK.apply(skeleton, int(_bone.get("RightUpLeg", -1)), int(_bone.get("RightLeg", -1)), int(_bone.get("RightFoot", -1)), rf, pole_rf, rf_w)
+
+
+func bone_world(logical: String) -> Vector3:
+	if skeleton == null:
+		return Vector3.ZERO
+	var idx := int(_bone.get(logical, -1))
+	if idx < 0:
+		return Vector3.ZERO
+	return skeleton.global_transform * skeleton.get_bone_global_pose(idx).origin
 
 
 func _update_markers() -> void:
@@ -549,9 +587,12 @@ func _update_markers() -> void:
 		var mi: MeshInstance3D = _limb_markers.get(limb_id)
 		if mi == null:
 			continue
-		mi.visible = show and player.ik_weight > 0.05 and player.active_target != null
+		mi.visible = show and player.ik_weight > 0.05 and (player.contacts_ready or player.active_target != null)
 		if mi.visible:
-			mi.global_position = player.active_target.limb_target(limb_id)
+			if player.contacts_ready:
+				mi.global_position = player.contact_of(limb_id)
+			else:
+				mi.global_position = player.active_target.limb_target(limb_id)
 
 
 func model_source_name() -> String:

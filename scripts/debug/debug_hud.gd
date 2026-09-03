@@ -45,6 +45,17 @@ func refresh() -> void:
 	lines.append("MODEL  %s" % player.visuals.model_source_name())
 	var tree_on := player.visuals.anim_tree != null and player.visuals.anim_tree.active
 	lines.append("IK     %.2f  grab=%.2f  tree=%s" % [player.ik_weight, player.grab_alpha, "on" if tree_on else "off"])
+	if player.traverse_phase != "":
+		lines.append("MOVE   %s  side=%.0f" % [player.traverse_phase, player.traverse_side])
+	if player.active_target or player.contacts_ready:
+		var lh_t := player.contact_lh if player.contacts_ready else player.active_target.hand_left
+		var rh_t := player.contact_rh if player.contacts_ready else player.active_target.hand_right
+		var pel_t := player.active_target.hang_pelvis if player.active_target else player.global_position
+		var lh := player.visuals.bone_world("LeftHand")
+		var rh := player.visuals.bone_world("RightHand")
+		lines.append("LH     %.2fm" % lh.distance_to(lh_t))
+		lines.append("RH     %.2fm" % rh.distance_to(rh_t))
+		lines.append("PELVIS %.2fm" % player.global_position.distance_to(pel_t))
 	lines.append("")
 	if player.detector:
 		lines.append(player.detector.summary_text())

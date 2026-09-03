@@ -52,16 +52,34 @@ func _test_grab_mantle(player: Player) -> void:
 	_hold("move_forward", true)
 	_press("jump")
 	var seen := {}
+	var grab_captured := false
+	var grab_mid := false
+	var tree_stopped := false
 	for i in 90:
 		await physics_frame
 		seen[player.state_name()] = true
+		if player.state_name() == "LedgeGrab":
+			grab_captured = player.visuals.grab_xfade.captured
+			if player.grab_alpha > 0.12 and player.grab_alpha < 0.98:
+				grab_mid = true
+			if player.visuals.anim_tree and not player.visuals.anim_tree.active:
+				tree_stopped = true
 		if player.state_name() == "Hang":
 			break
 	print("GRAB seen=", seen.keys(), " final=", player.state_name(), " pos=", player.global_position)
+	print("GRAB_XFADE captured=", grab_captured, " mid=", grab_mid, " tree_off=", tree_stopped, " alpha=", player.grab_alpha, " ik=", player.ik_weight)
 	if player.detector:
 		print("DETECT ", player.detector.summary_text().replace("\n", " | "))
 	if not (seen.has("LedgeGrab") or seen.has("Hang")):
 		push_error("Failed to grab ledge from jump")
+		quit(1)
+		return
+	if seen.has("LedgeGrab") and not grab_captured:
+		push_error("GrabTransition did not capture the jump pose")
+		quit(1)
+		return
+	if seen.has("LedgeGrab") and not tree_stopped:
+		push_error("AnimationTree should stay off without resetting during LedgeGrab")
 		quit(1)
 		return
 	for i in 18:

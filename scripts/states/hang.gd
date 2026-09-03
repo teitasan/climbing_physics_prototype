@@ -10,9 +10,14 @@ func enter(_prev: String, data: Dictionary = {}) -> void:
 	target = data.get("target", player.active_target)
 	player.velocity = Vector3.ZERO
 	_refresh_cd = 0.0
-	hang_elapsed = 0.0
+	if _prev != "Traverse":
+		hang_elapsed = 0.0
+		player.hang_motion_t = 0.0
+	else:
+		hang_elapsed = player.hang_motion_t
 	if target:
 		player.hang_to(target, 1.0)
+		player.ik_weight = GameFeel.HANG_IK_MAX
 
 
 func physics_update(delta: float) -> void:
@@ -20,6 +25,7 @@ func physics_update(delta: float) -> void:
 		machine.change("Falling")
 		return
 	hang_elapsed += delta
+	player.hang_motion_t = hang_elapsed
 	_refresh_cd -= delta
 	if _refresh_cd <= 0.0:
 		_refresh_cd = 0.12
@@ -34,6 +40,7 @@ func physics_update(delta: float) -> void:
 			player.active_target = target
 			player.hang_style = target.hang_style
 	player.hang_to(target, clampf(delta * 14.0, 0.0, 1.0))
+	player.ik_weight = GameFeel.HANG_IK_MAX
 	if Input.is_action_just_pressed("drop") or (Input.is_action_just_pressed("move_back") and absf(player.input_vec.x) < 0.2):
 		_drop()
 		return
@@ -57,6 +64,7 @@ func _drop() -> void:
 	player.velocity = push + Vector3.DOWN * 0.4
 	player.ik_weight = 0.0
 	player.active_target = null
+	player.hang_motion_t = 0.0
 	machine.change("Falling")
 
 

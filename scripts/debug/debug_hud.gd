@@ -43,6 +43,8 @@ func refresh() -> void:
 	lines.append("VEL    (%.1f, %.1f, %.1f)" % [player.velocity.x, player.velocity.y, player.velocity.z])
 	lines.append("POS    (%.1f, %.1f, %.1f)" % [player.global_position.x, player.global_position.y, player.global_position.z])
 	lines.append("MODEL  %s" % player.visuals.model_source_name())
+	var tree_on := player.visuals.anim_tree != null and player.visuals.anim_tree.active
+	lines.append("IK     %.2f  grab=%.2f  tree=%s" % [player.ik_weight, player.grab_alpha, "on" if tree_on else "off"])
 	lines.append("")
 	if player.detector:
 		lines.append(player.detector.summary_text())

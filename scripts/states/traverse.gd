@@ -12,6 +12,8 @@ func physics_update(delta: float) -> void:
 	if target == null:
 		machine.change("Falling")
 		return
+	player.hang_motion_t += delta
+	player.ik_weight = GameFeel.HANG_IK_MAX
 	if absf(player.input_vec.x) < 0.18:
 		machine.change("Hang", {"target": target})
 		return
@@ -42,4 +44,4 @@ func physics_update(delta: float) -> void:
 	player.global_position = player.global_position.move_toward(dest, GameFeel.TRAVERSE_SPEED * delta)
 	player.velocity = Vector3.ZERO
 	player.visuals.snap_facing(target.facing_dir())
-	player.ik_weight = 0.0
+	player.ik_weight = GameFeel.HANG_IK_MAX

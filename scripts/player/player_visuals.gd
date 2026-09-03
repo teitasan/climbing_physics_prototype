@@ -1,6 +1,8 @@
 class_name PlayerVisuals
 extends Node3D
 
+const GrabXfade := preload("res://scripts/anim/grab_transition.gd")
+
 ## Procedural humanoid mannequin with Mixamo/Quaternius-style bone names.
 ## If a Quaternius GLB is present it is instanced. Locomotion uses the Universal
 ## Animation Library through AnimationTree when available; hang/mantle stay
@@ -10,6 +12,7 @@ var player: Player
 var skeleton: Skeleton3D
 var animation_player: AnimationPlayer
 var anim_tree: PlayerAnimTree
+var grab_xfade := GrabXfade.new()
 var using_imported := false
 var imported_root: Node3D
 var phase := 0.0
@@ -352,6 +355,25 @@ func snap_facing(dir: Vector3) -> void:
 	rotation.y = facing_yaw
 
 
+func begin_grab() -> void:
+	var stop_tree := Callable()
+	if anim_tree:
+		stop_tree = anim_tree.stop_for_pose
+	grab_xfade.begin(skeleton, stop_tree, pose_hang_base)
+
+
+func set_grab_alpha(alpha: float) -> void:
+	if skeleton == null:
+		return
+	if grab_xfade.captured:
+		grab_xfade.apply(skeleton, alpha)
+
+
+func pose_hang_base() -> void:
+	_reset_pose()
+	_apply_hang_extras(0.0)
+
+
 func update_visuals(delta: float) -> void:
 	if skeleton == null:
 		return
@@ -363,12 +385,29 @@ func update_visuals(delta: float) -> void:
 	var st := player.state_name()
 	var speed := Vector3(player.velocity.x, 0.0, player.velocity.z).length()
 	var grounded := st == "Grounded"
-	var climbing := st == "Hang" or st == "Traverse" or st == "LedgeGrab" or st == "Mantle"
+	var grabbing := st == "LedgeGrab"
+	var hanging := st == "Hang" or st == "Traverse"
+	var climbing := grabbing or hanging or st == "Mantle"
 	if not climbing:
 		if player.wish_dir.length_squared() > 0.04:
 			set_desired_facing(player.wish_dir, delta)
 		else:
 			set_desired_facing(player.camera_rig.flat_forward(), delta, GameFeel.ROTATE_SPEED * 0.55)
+	if climbing:
+		if anim_tree and anim_tree.active:
+			anim_tree.stop_for_pose()
+		if grabbing:
+			if not grab_xfade.captured:
+				begin_grab()
+			grab_xfade.apply(skeleton, player.grab_alpha)
+		elif hanging:
+			_hang_pose(delta)
+		elif st == "Mantle":
+			_mantle_pose(delta)
+		skeleton.force_update_all_bone_transforms()
+		_apply_ik()
+		_update_markers()
+		return
 	var used_tree := anim_tree != null and anim_tree.drive(delta)
 	if used_tree:
 		_apply_ik()
@@ -376,10 +415,6 @@ func update_visuals(delta: float) -> void:
 		return
 	if grounded or st == "Jump" or st == "Falling" or st == "JumpGrab":
 		_locomotion_pose(delta, speed, grounded, st)
-	elif st == "Hang" or st == "Traverse" or st == "LedgeGrab":
-		_hang_pose(delta)
-	elif st == "Mantle":
-		_mantle_pose(delta)
 	_apply_ik()
 	_update_markers()
 
@@ -434,25 +469,38 @@ func _locomotion_pose(delta: float, speed: float, grounded: bool, st: String) ->
 
 func _hang_pose(_delta: float) -> void:
 	_reset_pose()
+	_apply_hang_extras(player.hang_motion_t)
+
+
+func _apply_hang_extras(motion_t: float) -> void:
 	var braced := player.hang_style == ClimbTarget.HangStyle.BRACED
-	_set_rot("LeftArm", Vector3(-1.1, 0.0, -0.4))
-	_set_rot("RightArm", Vector3(-1.1, 0.0, 0.4))
-	_set_rot("LeftForeArm", Vector3(0.4, 0.0, 0.0))
-	_set_rot("RightForeArm", Vector3(0.4, 0.0, 0.0))
-	_set_rot("Spine", Vector3(0.08 if braced else 0.16, 0.0, 0.0))
+	var breath := 0.0
+	var sway := 0.0
+	var lag := 0.0
+	if motion_t > 0.0:
+		breath = sin(motion_t * 1.7) * 0.035
+		sway = sin(motion_t * 0.85) * 0.028
+		lag = sin(motion_t * 0.85 - 0.55) * 0.04
+	_set_rot("LeftArm", Vector3(-1.1 + breath * 0.35, 0.0, -0.4 - breath * 0.2))
+	_set_rot("RightArm", Vector3(-1.1 + breath * 0.35, 0.0, 0.4 + breath * 0.2))
+	_set_rot("LeftForeArm", Vector3(0.4 + breath * 0.15, 0.0, 0.0))
+	_set_rot("RightForeArm", Vector3(0.4 + breath * 0.15, 0.0, 0.0))
+	_set_rot("Spine", Vector3((0.08 if braced else 0.16) + breath, sway * 0.35, 0.0))
+	_set_rot("Chest", Vector3(breath * 0.55, 0.0, 0.0))
+	_set_rot("Hips", Vector3(0.0, sway, 0.0))
+	_set_rot("Head", Vector3(-breath * 0.25, -sway * 0.45, 0.0))
 	if braced:
-		_set_rot("LeftUpLeg", Vector3(0.4, 0.0, 0.0))
-		_set_rot("RightUpLeg", Vector3(0.4, 0.0, 0.0))
-		_set_rot("LeftLeg", Vector3(0.55, 0.0, 0.0))
-		_set_rot("RightLeg", Vector3(0.55, 0.0, 0.0))
+		_set_rot("LeftUpLeg", Vector3(0.4 + lag * 0.25, 0.0, 0.0))
+		_set_rot("RightUpLeg", Vector3(0.4 - lag * 0.25, 0.0, 0.0))
+		_set_rot("LeftLeg", Vector3(0.55 + lag * 0.2, 0.0, 0.0))
+		_set_rot("RightLeg", Vector3(0.55 - lag * 0.2, 0.0, 0.0))
 	else:
-		_set_rot("LeftUpLeg", Vector3(0.08, 0.0, 0.0))
-		_set_rot("RightUpLeg", Vector3(0.08, 0.0, 0.0))
-		_set_rot("LeftLeg", Vector3(0.12, 0.0, 0.0))
-		_set_rot("RightLeg", Vector3(0.12, 0.0, 0.0))
+		_set_rot("LeftUpLeg", Vector3(0.08 + lag * 0.15, 0.0, 0.0))
+		_set_rot("RightUpLeg", Vector3(0.08 - lag * 0.15, 0.0, 0.0))
+		_set_rot("LeftLeg", Vector3(0.12 + lag * 0.2, 0.0, 0.0))
+		_set_rot("RightLeg", Vector3(0.12 - lag * 0.2, 0.0, 0.0))
 	if player.state_name() == "Traverse":
-		var sway := sin(Time.get_ticks_msec() * 0.012) * 0.08
-		_set_rot("Hips", Vector3(0.0, sway, 0.0))
+		_set_rot("Hips", Vector3(0.0, sway + sin(motion_t * 6.0) * 0.05, 0.0))
 
 
 func _mantle_pose(_delta: float) -> void:
@@ -493,11 +541,6 @@ func _apply_ik() -> void:
 	var pole_r := t.ledge_point + t.wall_normal * 0.45 + Vector3.DOWN * 0.2 + t.tangent() * 0.3
 	TwoBoneIK.apply(skeleton, int(_bone.get("LeftArm", -1)), int(_bone.get("LeftForeArm", -1)), int(_bone.get("LeftHand", -1)), t.hand_left, pole_l, w)
 	TwoBoneIK.apply(skeleton, int(_bone.get("RightArm", -1)), int(_bone.get("RightForeArm", -1)), int(_bone.get("RightHand", -1)), t.hand_right, pole_r, w)
-	if t.hang_style == ClimbTarget.HangStyle.BRACED and w > 0.4:
-		var fpol_l := t.hang_pelvis + t.wall_normal * 0.4 - t.tangent() * 0.2
-		var fpol_r := t.hang_pelvis + t.wall_normal * 0.4 + t.tangent() * 0.2
-		TwoBoneIK.apply(skeleton, int(_bone.get("LeftUpLeg", -1)), int(_bone.get("LeftLeg", -1)), int(_bone.get("LeftFoot", -1)), t.foot_left, fpol_l, w * 0.75)
-		TwoBoneIK.apply(skeleton, int(_bone.get("RightUpLeg", -1)), int(_bone.get("RightLeg", -1)), int(_bone.get("RightFoot", -1)), t.foot_right, fpol_r, w * 0.75)
 
 
 func _update_markers() -> void:

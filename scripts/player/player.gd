@@ -24,6 +24,8 @@ var jump_grab_until := 0.0
 var spawn_position := Vector3(0, 1, 0)
 var debug_enabled := false
 var ik_weight := 0.0
+var grab_alpha := 0.0
+var hang_motion_t := 0.0
 var hang_style: int = ClimbTarget.HangStyle.BRACED
 var active_target: ClimbTarget
 var last_hang_target: ClimbTarget
@@ -223,6 +225,8 @@ func reset_to_spawn() -> void:
 	velocity = Vector3.ZERO
 	active_target = null
 	ik_weight = 0.0
+	grab_alpha = 0.0
+	hang_motion_t = 0.0
 	drop_lock_until = 0.0
 	no_regrab_until = 0.0
 	jump_grab_until = 0.0
@@ -230,6 +234,8 @@ func reset_to_spawn() -> void:
 		machine.change("Grounded")
 	if visuals and visuals.anim_tree:
 		visuals.anim_tree.reset_locomotion()
+	if visuals:
+		visuals.grab_xfade.clear()
 	if visuals and camera_rig:
 		visuals.snap_facing(camera_rig.flat_forward())
 
@@ -238,10 +244,10 @@ func hang_to(target: ClimbTarget, align: float = 1.0) -> void:
 	if target == null:
 		return
 	var dest := target.hang_pelvis
-	global_position = global_position.lerp(dest, clampf(align, 0.0, 1.0))
+	var a := clampf(align, 0.0, 1.0)
+	global_position = global_position.lerp(dest, a)
 	velocity = Vector3.ZERO
-	visuals.snap_facing(target.facing_dir())
+	visuals.facing_yaw = lerp_angle(visuals.facing_yaw, visuals.yaw_for_dir(target.facing_dir()), a)
+	visuals.rotation.y = visuals.facing_yaw
 	active_target = target
 	hang_style = target.hang_style
-	# Pose-only hang until IK targets match this skeleton's rest-relative pose.
-	ik_weight = 0.0

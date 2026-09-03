@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://dtyd7xyw4lvo6"
-path="res://.godot/imported/Superhero_Male_FullBody.gltf-97c79487d20796e56ada931b6186a7c1.scn"
+uid="uid://dgyl5454j5p1i"
+path="res://.godot/imported/AnimationLibrary_Godot_Standard.glb-1f09b1364dbac04ccce0cf2891c6f9cf.scn"
 
 [deps]
 
-source_file="res://assets/characters/quaternius/Superhero_Male_FullBody.gltf"
-dest_files=["res://.godot/imported/Superhero_Male_FullBody.gltf-97c79487d20796e56ada931b6186a7c1.scn"]
+source_file="res://assets/animations/quaternius/AnimationLibrary_Godot_Standard.glb"
+dest_files=["res://.godot/imported/AnimationLibrary_Godot_Standard.glb-1f09b1364dbac04ccce0cf2891c6f9cf.scn"]
 
 [params]
 
@@ -41,8 +41,8 @@ materials/extract_format=0
 materials/extract_path=""
 _subresources={
 "nodes": {
-"PATH:Armature/Skeleton3D": {
-"retarget/bone_map": Resource("uid://b0sspfjcixcv5", "res://assets/characters/quaternius/character_bonemap.tres"),
+"PATH:Rig/Skeleton3D": {
+"retarget/bone_map": Resource("uid://cwn43vu1j7gvw", "res://assets/animations/quaternius/ual_bonemap.tres"),
 "retarget/bone_renamer/rename_bones": true,
 "retarget/bone_renamer/unique_node": true,
 "retarget/bone_renamer/unique_node/skeleton_name": "GeneralSkeleton",

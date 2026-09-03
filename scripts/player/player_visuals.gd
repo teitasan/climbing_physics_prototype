@@ -2,11 +2,14 @@ class_name PlayerVisuals
 extends Node3D
 
 ## Procedural humanoid mannequin with Mixamo/Quaternius-style bone names.
-## If a Quaternius GLB is present it is instanced and the mannequin is hidden.
+## If a Quaternius GLB is present it is instanced. Locomotion uses the Universal
+## Animation Library through AnimationTree when available; hang/mantle stay
+## procedural until climb clips exist.
 
 var player: Player
 var skeleton: Skeleton3D
 var animation_player: AnimationPlayer
+var anim_tree: PlayerAnimTree
 var using_imported := false
 var imported_root: Node3D
 var phase := 0.0
@@ -19,24 +22,24 @@ var _ik_poles: Dictionary = {}
 var _limb_markers: Dictionary = {}
 
 const BONE_ALIASES := {
-	"Hips": ["Hips", "hips", "pelvis", "mixamorig:Hips", "mixamorig_Hips", "Root"],
+	"Hips": ["Hips", "hips", "pelvis", "mixamorig:Hips", "mixamorig_Hips"],
 	"Spine": ["Spine", "spine", "spine_01", "mixamorig:Spine", "Spine1"],
-	"Chest": ["Chest", "spine_02", "spine_03", "Spine1", "Spine2", "mixamorig:Spine1", "mixamorig:Spine2"],
+	"Chest": ["Chest", "UpperChest", "spine_02", "spine_03", "Spine1", "Spine2", "mixamorig:Spine1", "mixamorig:Spine2"],
 	"Neck": ["Neck", "neck", "neck_01", "mixamorig:Neck"],
 	"Head": ["Head", "head", "mixamorig:Head"],
 	"LeftShoulder": ["LeftShoulder", "clavicle_l", "mixamorig:LeftShoulder"],
-	"LeftArm": ["LeftArm", "LeftUpperArm", "upperarm_l", "mixamorig:LeftArm", "upperarm.l"],
-	"LeftForeArm": ["LeftForeArm", "LeftLowerArm", "lowerarm_l", "mixamorig:LeftForeArm", "lowerarm.l"],
+	"LeftArm": ["LeftUpperArm", "LeftArm", "upperarm_l", "mixamorig:LeftArm", "upperarm.l"],
+	"LeftForeArm": ["LeftLowerArm", "LeftForeArm", "lowerarm_l", "mixamorig:LeftForeArm", "lowerarm.l"],
 	"LeftHand": ["LeftHand", "hand_l", "mixamorig:LeftHand", "hand.l"],
 	"RightShoulder": ["RightShoulder", "clavicle_r", "mixamorig:RightShoulder"],
-	"RightArm": ["RightArm", "RightUpperArm", "upperarm_r", "mixamorig:RightArm", "upperarm.r"],
-	"RightForeArm": ["RightForeArm", "RightLowerArm", "lowerarm_r", "mixamorig:RightForeArm", "lowerarm.r"],
+	"RightArm": ["RightUpperArm", "RightArm", "upperarm_r", "mixamorig:RightArm", "upperarm.r"],
+	"RightForeArm": ["RightLowerArm", "RightForeArm", "lowerarm_r", "mixamorig:RightForeArm", "lowerarm.r"],
 	"RightHand": ["RightHand", "hand_r", "mixamorig:RightHand", "hand.r"],
-	"LeftUpLeg": ["LeftUpLeg", "LeftUpperLeg", "thigh_l", "mixamorig:LeftUpLeg", "thigh.l"],
-	"LeftLeg": ["LeftLeg", "LeftLowerLeg", "calf_l", "mixamorig:LeftLeg", "shin.l"],
+	"LeftUpLeg": ["LeftUpperLeg", "LeftUpLeg", "thigh_l", "mixamorig:LeftUpLeg", "thigh.l"],
+	"LeftLeg": ["LeftLowerLeg", "LeftLeg", "calf_l", "mixamorig:LeftLeg", "shin.l"],
 	"LeftFoot": ["LeftFoot", "foot_l", "mixamorig:LeftFoot", "foot.l"],
-	"RightUpLeg": ["RightUpLeg", "RightUpperLeg", "thigh_r", "mixamorig:RightUpLeg", "thigh.r"],
-	"RightLeg": ["RightLeg", "RightLowerLeg", "calf_r", "mixamorig:RightLeg", "shin.r"],
+	"RightUpLeg": ["RightUpperLeg", "RightUpLeg", "thigh_r", "mixamorig:RightUpLeg", "thigh.r"],
+	"RightLeg": ["RightLowerLeg", "RightLeg", "calf_r", "mixamorig:RightLeg", "shin.r"],
 	"RightFoot": ["RightFoot", "foot_r", "mixamorig:RightFoot", "foot.r"],
 }
 
@@ -67,6 +70,7 @@ func setup(p: Player) -> void:
 		_attach_cosmetics()
 		_ground_imported()
 	_make_limb_markers()
+	_try_setup_anim_tree()
 
 
 func _try_load_quaternius() -> bool:
@@ -98,11 +102,22 @@ func _try_load_quaternius() -> bool:
 
 
 func _attach_cosmetics() -> void:
-	# Origin-at-0 hair is authored at standing head height (~1.7 m).
-	# Parent it to the character root, not the Head bone.
-	if imported_root == null:
+	# Origin-at-0 hair verts sit around standing head height (~1.68 m).
+	# Parent to Head with a matching negative offset so it follows the skull.
+	if imported_root == null or skeleton == null:
 		return
-	_add_packed(imported_root, HAIR_CANDIDATES)
+	var head_idx := skeleton.find_bone("Head")
+	if head_idx < 0:
+		_add_packed(imported_root, HAIR_CANDIDATES)
+		return
+	var att := BoneAttachment3D.new()
+	att.name = "HairAttach"
+	att.bone_name = "Head"
+	att.bone_idx = head_idx
+	skeleton.add_child(att)
+	_add_packed(att, HAIR_CANDIDATES)
+	if att.get_child_count() > 0:
+		(att.get_child(0) as Node3D).position = Vector3(0.0, -1.68, 0.0)
 
 
 func _add_packed(parent: Node, paths: Array[String]) -> void:
@@ -120,8 +135,22 @@ func _ground_imported() -> void:
 	if imported_root == null:
 		return
 	imported_root.rotation = Vector3.ZERO
-	# Bind-pose feet sit ~9 cm above the skeleton origin.
-	imported_root.position = Vector3(0.0, -0.09, 0.0)
+	imported_root.position = Vector3.ZERO
+	if skeleton == null:
+		imported_root.position.y = -0.09
+		return
+	skeleton.reset_bone_poses()
+	skeleton.force_update_all_bone_transforms()
+	var foot_y := 999.0
+	for bone_name in ["LeftFoot", "RightFoot", "LeftToes", "RightToes", "foot_l", "foot_r"]:
+		var idx := skeleton.find_bone(bone_name)
+		if idx < 0:
+			continue
+		foot_y = minf(foot_y, skeleton.get_bone_global_pose(idx).origin.y)
+	if foot_y < 100.0:
+		imported_root.position.y = -foot_y
+	else:
+		imported_root.position.y = -0.09
 
 
 func _estimate_aabb(n: Node) -> AABB:
@@ -140,6 +169,17 @@ func _estimate_aabb(n: Node) -> AABB:
 			acc = child_aabb
 			started = true
 	return acc
+
+
+func _try_setup_anim_tree() -> void:
+	if not using_imported or skeleton == null:
+		return
+	var tree := PlayerAnimTree.new()
+	if tree.setup(player, skeleton, self):
+		anim_tree = tree
+		animation_player = tree.ap
+	else:
+		tree.free()
 
 
 func _find_skeleton(n: Node) -> Skeleton3D:
@@ -316,16 +356,25 @@ func update_visuals(delta: float) -> void:
 	if skeleton == null:
 		return
 	if not auto_animate:
+		if anim_tree:
+			anim_tree.stop_for_pose()
 		_update_markers()
 		return
 	var st := player.state_name()
 	var speed := Vector3(player.velocity.x, 0.0, player.velocity.z).length()
 	var grounded := st == "Grounded"
-	if grounded or st == "Jump" or st == "Falling" or st == "JumpGrab":
+	var climbing := st == "Hang" or st == "Traverse" or st == "LedgeGrab" or st == "Mantle"
+	if not climbing:
 		if player.wish_dir.length_squared() > 0.04:
 			set_desired_facing(player.wish_dir, delta)
 		else:
 			set_desired_facing(player.camera_rig.flat_forward(), delta, GameFeel.ROTATE_SPEED * 0.55)
+	var used_tree := anim_tree != null and anim_tree.drive(delta)
+	if used_tree:
+		_apply_ik()
+		_update_markers()
+		return
+	if grounded or st == "Jump" or st == "Falling" or st == "JumpGrab":
 		_locomotion_pose(delta, speed, grounded, st)
 	elif st == "Hang" or st == "Traverse" or st == "LedgeGrab":
 		_hang_pose(delta)
@@ -336,6 +385,8 @@ func update_visuals(delta: float) -> void:
 
 
 func rest_pose() -> void:
+	if anim_tree:
+		anim_tree.stop_for_pose()
 	_reset_pose()
 
 
@@ -462,5 +513,7 @@ func _update_markers() -> void:
 
 func model_source_name() -> String:
 	if using_imported:
+		if anim_tree and anim_tree.using_tree:
+			return "Quaternius Superhero Male + UAL AnimationTree"
 		return "Quaternius Superhero Male (CC0 Standard)"
 	return "Procedural mannequin"

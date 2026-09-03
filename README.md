@@ -20,6 +20,8 @@ godot --path .
 ```bash
 godot --headless --path . --quit-after 2
 godot --headless --path . -s res://tools/smoke_test.gd
+godot --headless --path . -s res://tools/check_model.gd
+godot --headless --path . -s res://tools/check_anim.gd
 godot --headless --path . -s res://tools/playtest.gd
 ```
 
@@ -63,12 +65,23 @@ Marker は置いていません。同じ条件を満たす Box / CSG なら登�
 Player (CharacterBody3D)
 ├ StateMachine … Grounded / Jump / Falling / LedgeGrab / Hang / Traverse / Mantle / JumpGrab
 ├ ClimbDetector … 地形から棚を動的検出
-├ PlayerVisuals … ヒューマノイド + 二骨 IK
+├ PlayerVisuals … ヒューマノイド + AnimationTree（UAL）+ 二骨 IK
 ├ PlayerCamera … 三人称カメラ
 └ ClimbDebug / DebugHud
 ```
 
 到達判定は `ReachQuery` + `ReachUnits` に分離しています。1 単位 = 25cm で、後からグリッド判定へ差し替えできます。手足は `Limb`（左手 / 右手 / 左足 / 右足）として扱います。
+
+表示は次の順です。
+
+```
+Player State
+ → AnimationTree（Idle / Walk / Jog / Sprint / JumpStart / JumpLoop / JumpLand）
+ → （登攀時のみ）プロシージャルポーズ
+ → TwoBoneIK（現在はほぼオフ。接地点補正用）
+```
+
+ヘッドレス確認に `godot --headless --path . -s res://tools/check_anim.gd` を追加できます。
 
 ## 登攀判定の仕組み
 
@@ -89,6 +102,7 @@ Player (CharacterBody3D)
 
 - プロトタイプ本体: MIT
 - Quaternius Universal Base Characters **Standard (CC0)** を同梱。無料版に含まれる Superhero Male + Hair_SimpleParted を使用（Regular 体型は Source 版のみ）
+- Quaternius Universal Animation Library **Standard (CC0)** を同梱。Idle / Walk / Jog / Sprint / Jump を AnimationTree で再生
 - OpenClimber はライセンス未設定のため **コードは未使用**（設計の参考のみ）
 - ProjectUltraversal は GPL-3.0 のため **コードは未使用**（状態設計の参考のみ）
 
@@ -96,8 +110,7 @@ Quaternius Regular Male / Female を使う場合は `assets/characters/README.tx
 
 ## 現時点の制限
 
-- Quaternius メッシュは手動ドロップが必要。未配置時はカプセルマネキン
-- 本格的なアニメーションライブラリ未接続（プロシージャル + IK）
+- Hang / Mantle / Ledge Grab は Standard パックにクリップが無いため、まだプロシージャルのフォールバック
 - コーナー回り込みは簡易。複雑な凹凸や連続ホールド移動は未実装
 - 身長・腕長による到達差は BodyProfile まで。Hex グリッド化は未適用
 - 足 IK は Cat Hang 時のみ。地上の足裏合わせは未実装
@@ -105,9 +118,9 @@ Quaternius Regular Male / Female を使う場合は `assets/characters/README.tx
 
 ## 次に改善すべきポイント
 
-1. Quaternius Standard の Regular Male と Universal Animation Library を接続し、Idle / 走 / Hang を実アニメーションに
+1. Hang Idle / Traverse / Mantle / Ledge Grab を実クリップへ（Standard には無いので追加パックか自作）
 2. 到達判定を 25cm グリッドへ置換し、体格差を整数単位で出す
 3. 左手・右手の交互ムーブと、ホールド間距離による姿勢負荷
 4. コーナー、壁から壁、dyno、よじ登り中ジャンプの精度
 5. `GameFeel` を Easy / Normal / Sim のプリセットに分ける
-6. 手足のポールベクトルと TwoBoneIK の安定化
+6. Hang クリップの上に TwoBoneIK を「接地点の数 cm 補正」として乗せる

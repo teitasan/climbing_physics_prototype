@@ -9,14 +9,14 @@ This prototype's original code is MIT (`LICENSE`). External code was not copied 
 - URL: https://quaternius.com/packs/universalbasecharacters.html
 - Also: https://quaternius.itch.io/universal-base-characters
 - License: CC0 1.0 (`assets/characters/quaternius/License_Standard.txt`)
-- Use: Player mesh. The free Standard pack contains Superhero Male / Female (Regular proportions are Source-only). This project uses `Superhero_Male_FullBody.gltf` plus `Hair_SimpleParted`.
+- Use: Player mesh. The free Standard pack contains Superhero Male / Female (Regular proportions are Source-only). This project uses `Superhero_Male_FullBody.gltf` plus `Hair_SimpleParted`. Imported with `SkeletonProfileHumanoid` retargeting.
 
 ### Quaternius Universal Animation Library
 
 - URL: https://quaternius.com/packs/universalanimationlibrary.html
-- Also: https://quaternius.itch.io/universal-animation-library
-- License: CC0 (free Standard pack)
-- Use: Optional future retarget onto the humanoid rig. Not required to play.
+- Also: https://opengameart.org/content/universal-animation-library
+- License: CC0 1.0 (`assets/animations/quaternius/License.txt`)
+- Use: Standard pack (45 clips). `Idle`, `Walk`, `Jog_Fwd`, `Sprint`, `Jump_Start`, `Jump`, `Jump_Land` drive the player AnimationTree. Hang / Mantle / Ledge Grab are not in Standard.
 
 ### Godot Engine
 

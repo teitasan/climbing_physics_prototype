@@ -18,7 +18,7 @@ func _run() -> void:
 	var v: PlayerVisuals = player.visuals
 	print("MODEL ", v.model_source_name(), " imported=", v.using_imported)
 	if v.skeleton:
-		print("BONES ", v.skeleton.get_bone_count(), " hips=", v.skeleton.find_bone("pelvis"), " head=", v.skeleton.find_bone("Head"), " larm=", v.skeleton.find_bone("upperarm_l"))
+		print("BONES ", v.skeleton.get_bone_count(), " hips=", v.skeleton.find_bone("Hips"), "/", v.skeleton.find_bone("pelvis"), " head=", v.skeleton.find_bone("Head"), " larm=", v.skeleton.find_bone("LeftUpperArm"), "/", v.skeleton.find_bone("upperarm_l"))
 	else:
 		push_error("no skeleton")
 		quit(1)

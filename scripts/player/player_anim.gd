@@ -1,8 +1,7 @@
 class_name PlayerAnimTree
 extends AnimationTree
 
-## Runtime AnimationTree: Player state → UAL clips → blend. Climbing clips are
-## not in the Standard pack, so Hang / Mantle stay on the procedural fallback.
+## Player state → UAL clips → blend. Climbing clips are not in the Standard pack.
 
 const UAL_SCENE := "res://assets/animations/quaternius/AnimationLibrary_Godot_Standard.glb"
 
@@ -14,16 +13,25 @@ const CLIP_JUMP_START := "Jump_Start"
 const CLIP_JUMP_LOOP := "Jump"
 const CLIP_JUMP_LAND := "Jump_Land"
 
+## Native locomotion speeds from foot stride on this rig (`tools/measure_clips.gd`).
+## Clips are in-place; BlendSpace is in m/s and TimeScale covers GameFeel speeds above Sprint.
+const CLIP_MPS_IDLE := 0.0
+const CLIP_MPS_WALK := 1.08
+const CLIP_MPS_JOG := 2.65
+const CLIP_MPS_SPRINT := 3.49
+
+const PARAM_BLEND := "parameters/Locomotion/Blend/blend_position"
+const PARAM_SCALE := "parameters/Locomotion/TimeScale/scale"
+
 var player: Player
 var ap: AnimationPlayer
 var playback: AnimationNodeStateMachinePlayback
 var using_tree := false
 var _prev_state := "Grounded"
-var _blend := 0.0
+var _blend_mps := 0.0
 var _jump_started := false
 var _air_time := 0.0
 var _air_down := 0.0
-var _planted := false
 
 
 func setup(p: Player, skeleton: Skeleton3D, host: Node3D) -> bool:
@@ -41,6 +49,7 @@ func setup(p: Player, skeleton: Skeleton3D, host: Node3D) -> bool:
 		ap.queue_free()
 		ap = null
 		return false
+	_plant_from_idle(skeleton)
 	name = "AnimationTree"
 	host.add_child(self)
 	owner = host
@@ -73,12 +82,13 @@ func drive(delta: float) -> bool:
 		_prev_state = st
 		_jump_started = false
 		_air_time = 0.0
+		_air_down = 0.0
 		return false
 	if not active:
 		active = true
+		playback.start("Locomotion")
 	var speed := Vector3(player.velocity.x, 0.0, player.velocity.z).length()
-	_blend = lerpf(_blend, _speed_blend(speed), 1.0 - exp(-delta * 9.0))
-	set("parameters/Locomotion/blend_position", _blend)
+	_update_locomotion_params(delta, speed)
 	var cur := str(playback.get_current_node())
 	match st:
 		"Jump":
@@ -87,13 +97,13 @@ func drive(delta: float) -> bool:
 			if _prev_state != "Jump":
 				_jump_started = true
 				_travel("JumpStart")
-			elif _jump_started and player.velocity.y < 0.35:
-				_force("JumpLoop")
+			elif cur == "JumpStart" and (player.velocity.y < 0.35 or _remaining() <= 0.08):
+				_travel("JumpLoop")
 		"Falling", "JumpGrab":
 			_air_time += delta
 			_air_down = minf(_air_down, player.velocity.y)
-			if cur == "JumpStart" and player.velocity.y < 0.0:
-				_force("JumpLoop")
+			if cur == "JumpStart" and (player.velocity.y < 0.0 or _remaining() <= 0.08):
+				_travel("JumpLoop")
 			elif cur != "JumpLoop" and cur != "JumpStart":
 				_travel("JumpLoop")
 		"Grounded":
@@ -102,15 +112,14 @@ func drive(delta: float) -> bool:
 				if _air_down < -3.8 and speed < GameFeel.WALK_SPEED * 0.55:
 					_travel("JumpLand")
 				else:
-					_force("Locomotion")
-			elif speed > 0.45:
-				_force("Locomotion")
-			elif cur != "JumpLand" and cur != "Locomotion":
+					_travel("Locomotion")
+			elif cur == "JumpLand":
+				if speed > 0.45 or _remaining() <= 0.12:
+					_travel("Locomotion")
+			elif cur != "Locomotion":
 				_travel("Locomotion")
 			_air_time = 0.0
 			_air_down = 0.0
-			if not _planted and str(playback.get_current_node()) == "Locomotion":
-				_plant_feet()
 		_:
 			pass
 	_prev_state = st
@@ -119,6 +128,29 @@ func drive(delta: float) -> bool:
 
 func stop_for_pose() -> void:
 	active = false
+
+
+func reset_locomotion() -> void:
+	if not using_tree or playback == null:
+		return
+	active = true
+	_prev_state = "Grounded"
+	_blend_mps = 0.0
+	_jump_started = false
+	_air_time = 0.0
+	_air_down = 0.0
+	playback.start("Locomotion")
+
+
+func _update_locomotion_params(delta: float, speed: float) -> void:
+	var target := 0.0 if speed < 0.18 else speed
+	_blend_mps = lerpf(_blend_mps, target, 1.0 - exp(-delta * 9.0))
+	set(PARAM_BLEND, _blend_mps)
+	if _blend_mps < 0.2:
+		set(PARAM_SCALE, 1.0)
+	else:
+		var native := minf(_blend_mps, CLIP_MPS_SPRINT)
+		set(PARAM_SCALE, _blend_mps / maxf(native, 0.2))
 
 
 func _install_library(skeleton: Skeleton3D) -> bool:
@@ -164,38 +196,66 @@ func _localize_anim(src: Animation, mixer: AnimationMixer, skeleton: Skeleton3D)
 	return anim
 
 
+func _plant_from_idle(skeleton: Skeleton3D) -> void:
+	if player == null or player.visuals == null or player.visuals.imported_root == null:
+		return
+	if not ap.has_animation(CLIP_IDLE):
+		return
+	ap.play(CLIP_IDLE)
+	ap.speed_scale = 0.0
+	ap.seek(0.0, true)
+	ap.advance(0.0)
+	skeleton.force_update_all_bone_transforms()
+	var min_y := 999.0
+	for bone_name in ["LeftFoot", "RightFoot", "LeftToes", "RightToes"]:
+		var idx := skeleton.find_bone(bone_name)
+		if idx < 0:
+			continue
+		min_y = minf(min_y, skeleton.get_bone_global_pose(idx).origin.y)
+	ap.stop()
+	ap.speed_scale = 1.0
+	if min_y < 100.0:
+		player.visuals.imported_root.position.y = -min_y
+
+
 func _build_state_machine() -> AnimationNodeStateMachine:
 	var sm := AnimationNodeStateMachine.new()
 	sm.add_node("Locomotion", _build_locomotion(), Vector2(280, 140))
 	sm.add_node("JumpStart", _clip(CLIP_JUMP_START, CLIP_JUMP_LOOP), Vector2(280, 20))
 	sm.add_node("JumpLoop", _clip(CLIP_JUMP_LOOP, CLIP_IDLE), Vector2(520, 20))
 	sm.add_node("JumpLand", _clip(CLIP_JUMP_LAND, CLIP_IDLE), Vector2(520, 140))
-	_link(sm, "Start", "Locomotion", 0.0, false, true)
+	_link(sm, "Start", "Locomotion", 0.0, true)
 	_link(sm, "Locomotion", "JumpStart", 0.10)
 	_link(sm, "Locomotion", "JumpLoop", 0.08)
 	_link(sm, "Locomotion", "JumpLand", 0.08)
-	_link(sm, "JumpStart", "JumpLoop", 0.06, true, true)
+	_link(sm, "JumpStart", "JumpLoop", 0.08)
 	_link(sm, "JumpStart", "JumpLand", 0.08)
 	_link(sm, "JumpStart", "Locomotion", 0.10)
 	_link(sm, "JumpLoop", "JumpLand", 0.10)
 	_link(sm, "JumpLoop", "Locomotion", 0.10)
-	_link(sm, "JumpLand", "Locomotion", 0.12, true, true)
+	_link(sm, "JumpLand", "Locomotion", 0.12)
 	_link(sm, "JumpLand", "JumpStart", 0.08)
 	_link(sm, "JumpLand", "JumpLoop", 0.08)
 	return sm
 
 
-func _build_locomotion() -> AnimationNodeBlendSpace1D:
+func _build_locomotion() -> AnimationNodeBlendTree:
 	var bs := AnimationNodeBlendSpace1D.new()
 	bs.min_space = 0.0
-	bs.max_space = 1.0
+	bs.max_space = maxf(CLIP_MPS_SPRINT, GameFeel.SPRINT_SPEED)
 	bs.sync = true
-	bs.add_blend_point(_clip(CLIP_IDLE, CLIP_IDLE), 0.0, -1, "Idle")
-	bs.add_blend_point(_clip(CLIP_WALK, CLIP_IDLE), 0.38, -1, "Walk")
+	bs.add_blend_point(_clip(CLIP_IDLE, CLIP_IDLE), CLIP_MPS_IDLE, -1, "Idle")
+	bs.add_blend_point(_clip(CLIP_WALK, CLIP_IDLE), CLIP_MPS_WALK, -1, "Walk")
 	if _has_clip(CLIP_JOG):
-		bs.add_blend_point(_clip(CLIP_JOG, CLIP_WALK), 0.72, -1, "Jog")
-	bs.add_blend_point(_clip(CLIP_SPRINT if _has_clip(CLIP_SPRINT) else CLIP_WALK, CLIP_WALK), 1.0, -1, "Sprint")
-	return bs
+		bs.add_blend_point(_clip(CLIP_JOG, CLIP_WALK), CLIP_MPS_JOG, -1, "Jog")
+	bs.add_blend_point(_clip(CLIP_SPRINT if _has_clip(CLIP_SPRINT) else CLIP_WALK, CLIP_WALK), CLIP_MPS_SPRINT, -1, "Sprint")
+	var ts := AnimationNodeTimeScale.new()
+	var bt := AnimationNodeBlendTree.new()
+	bt.add_node("Blend", bs, Vector2(0, 80))
+	bt.add_node("TimeScale", ts, Vector2(220, 80))
+	bt.connect_node("TimeScale", 0, "Blend")
+	bt.connect_node("output", 0, "TimeScale")
+	return bt
 
 
 func _clip(clip_name: String, fallback: String) -> AnimationNodeAnimation:
@@ -211,15 +271,15 @@ func _has_clip(clip_name: String) -> bool:
 	return ap != null and ap.has_animation(clip_name)
 
 
-func _link(sm: AnimationNodeStateMachine, from: String, to: String, fade: float, at_end := false, auto := false) -> void:
+func _link(sm: AnimationNodeStateMachine, from: String, to: String, fade: float, auto := false) -> void:
 	var trans := AnimationNodeStateMachineTransition.new()
 	trans.xfade_time = fade
-	if at_end:
-		trans.switch_mode = AnimationNodeStateMachineTransition.SWITCH_MODE_AT_END
-	if auto:
-		trans.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_AUTO
-	else:
-		trans.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_DISABLED
+	trans.switch_mode = AnimationNodeStateMachineTransition.SWITCH_MODE_IMMEDIATE
+	trans.advance_mode = (
+		AnimationNodeStateMachineTransition.ADVANCE_MODE_AUTO
+		if auto
+		else AnimationNodeStateMachineTransition.ADVANCE_MODE_DISABLED
+	)
 	sm.add_transition(from, to, trans)
 
 
@@ -231,43 +291,10 @@ func _travel(node_name: String) -> void:
 	playback.travel(node_name)
 
 
-func _force(node_name: String) -> void:
+func _remaining() -> float:
 	if playback == null:
-		return
-	if str(playback.get_current_node()) == node_name:
-		return
-	playback.start(node_name)
-
-
-func _plant_feet() -> void:
-	if _planted or player == null or player.visuals == null:
-		return
-	var skel: Skeleton3D = player.visuals.skeleton
-	var root_n: Node3D = player.visuals.imported_root
-	if skel == null or root_n == null:
-		return
-	skel.force_update_all_bone_transforms()
-	var min_y := 999.0
-	for bone_name in ["LeftFoot", "RightFoot", "LeftToes", "RightToes"]:
-		var idx := skel.find_bone(bone_name)
-		if idx < 0:
-			continue
-		var world_y := (skel.global_transform * skel.get_bone_global_pose(idx)).origin.y
-		min_y = minf(min_y, world_y)
-	if min_y > 100.0:
-		return
-	root_n.position.y += player.global_position.y - min_y
-	_planted = true
-
-
-func _speed_blend(speed: float) -> float:
-	if speed < 0.18:
 		return 0.0
-	var walk := GameFeel.WALK_SPEED
-	var sprint := GameFeel.SPRINT_SPEED
-	if speed < walk:
-		return lerpf(0.0, 0.42, clampf(speed / walk, 0.0, 1.0))
-	return lerpf(0.42, 1.0, clampf((speed - walk) / maxf(sprint - walk, 0.1), 0.0, 1.0))
+	return maxf(playback.get_current_length() - playback.get_current_play_position(), 0.0)
 
 
 func _is_air(st: String) -> bool:

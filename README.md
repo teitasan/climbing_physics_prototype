@@ -76,7 +76,7 @@ Player (CharacterBody3D)
 
 ```
 Player State
- → AnimationTree（Idle / Walk / Jog / Sprint / JumpStart / JumpLoop / JumpLand）
+ → AnimationTree（Locomotion は m/s の BlendSpace + TimeScale。JumpStart / JumpLoop / JumpLand は travel + cross fade）
  → （登攀時のみ）プロシージャルポーズ
  → TwoBoneIK（現在はほぼオフ。接地点補正用）
 ```

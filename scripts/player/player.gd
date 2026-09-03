@@ -228,6 +228,8 @@ func reset_to_spawn() -> void:
 	jump_grab_until = 0.0
 	if machine:
 		machine.change("Grounded")
+	if visuals and visuals.anim_tree:
+		visuals.anim_tree.reset_locomotion()
 	if visuals and camera_rig:
 		visuals.snap_facing(camera_rig.flat_forward())
 

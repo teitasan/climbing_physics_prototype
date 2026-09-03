@@ -43,12 +43,12 @@ func _run() -> void:
 	Input.action_press("move_forward")
 	for i in 36:
 		await physics_frame
-	print("WALK node=", player.visuals.anim_tree.playback.get_current_node(), " blend=", player.visuals.anim_tree.get("parameters/Locomotion/blend_position"))
+	print("WALK node=", player.visuals.anim_tree.playback.get_current_node(), " blend=", player.visuals.anim_tree.get(PlayerAnimTree.PARAM_BLEND), " scale=", player.visuals.anim_tree.get(PlayerAnimTree.PARAM_SCALE))
 	await _shot(player, out_abs, "tps_walk")
 	Input.action_press("dash")
 	for i in 28:
 		await physics_frame
-	print("SPRINT blend=", player.visuals.anim_tree.get("parameters/Locomotion/blend_position"))
+	print("SPRINT blend=", player.visuals.anim_tree.get(PlayerAnimTree.PARAM_BLEND), " scale=", player.visuals.anim_tree.get(PlayerAnimTree.PARAM_SCALE))
 	await _shot(player, out_abs, "tps_sprint")
 	Input.action_release("dash")
 	Input.action_release("move_forward")

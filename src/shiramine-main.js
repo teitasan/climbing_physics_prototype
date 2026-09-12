@@ -103,7 +103,7 @@ async function start(){
    el('stage').textContent=finished?'白峰・東峰　登頂':checkpoints[checkpoint].name;
    el('altitude').textContent=Math.round(2380+character.position.y)+' m';el('distance').textContent='残り '+Math.round(Math.max(0,world.route.length-cumulative[nearest]))+' m';el('progress').style.width=(finished?100:nearest/(points.length-1)*100)+'%';
    el('hint').textContent=finished?'登ってきた谷を見渡せます。全体表示でコースを振り返れます。':'次は「'+checkpoints[Math.min(4,checkpoint+1)].name+'」。黄色い道標と地面のラインをたどってください。';
-   el('stats').textContent=Math.round(fps)+' fps · '+Math.round(renderer.info.render.triangles/1000)+'千 三角形 · '+character.state+(debugMode?' · 歩行 '+P.walkSpeed.toFixed(1)+' m/s':'');drawMap();
+   el('stats').textContent=Math.round(fps)+' fps · '+Math.round(renderer.info.render.triangles/1000)+'千 三角形 · '+character.state+(debugMode?' · 歩行 '+P.walkSpeed.toFixed(1)+' m/s · 傾斜 '+Math.round(character.slopeAngle*180/Math.PI)+'°':'');drawMap();
   }
   renderer.render(scene,camera);
  }
@@ -116,12 +116,13 @@ async function start(){
   const button=document.createElement('button');button.textContent='歩行ルートを検証';button.id='run-test';el('controls').append(button);
   button.onclick=async()=>{
    if(testing)return;testing=true;button.disabled=true;checkpoint=0;respawn();const out=el('audit');out.style.display='block';
-   const input={x:0,z:-1,climbX:0,climbY:1,sprint:true,sneak:false,jumpPressed:false,dropPressed:false};let at=1,frames=0,stuck=0,prev=character.position.clone(),error=null;
+   const input={x:0,z:-1,climbX:0,climbY:1,sprint:true,sneak:false,jumpPressed:false,dropPressed:false};let at=1,frames=0,stuck=0,crawlFrames=0,maxSlope=0,slopeBins=[0,0,0,0,0,0],prev=character.position.clone(),error=null;
    try{
     while(at<points.length&&frames<60000){
      for(let j=0;j<200&&at<points.length;j++){
       const p=character.position,q=points[at];if(Math.hypot(q.x-p.x,q.z-p.z)<.5){at++;continue;}
       const angle=Math.atan2(-(q.x-p.x),-(q.z-p.z));character.update(1/60,input,angle);frames++;
+      if(character.crawlActive)crawlFrames++;const slopeDeg=(character.slopeAngle||0)*180/Math.PI;maxSlope=Math.max(maxSlope,slopeDeg);slopeBins[Math.min(5,Math.floor(slopeDeg/10))]++;
       if(p.distanceToSquared(prev)<.00001)stuck++;else stuck=0;prev.copy(p);
       if(stuck>240||p.y < q.y-12||!Number.isFinite(p.y))throw Error('歩行が停止: waypoint '+at+' / mode '+character.mode+' / '+p.toArray().map(v=>v.toFixed(2)).join(','));
      }
@@ -129,7 +130,7 @@ async function start(){
     }
     if(at<points.length)throw Error('検証時間上限');
    }catch(e){error=e.message;}
-   out.textContent=JSON.stringify({pass:!error,error,waypoints:at,total:points.length,frames,position:character.position.toArray(),triangles:renderer.info.render.triangles},null,2);out.dataset.result=error?'fail':'pass';
+   out.textContent=JSON.stringify({pass:!error,error,waypoints:at,total:points.length,frames,crawlFrames,crawlRatio:+(crawlFrames/Math.max(1,frames)).toFixed(3),slopeBinsDeg:slopeBins,maxSlopeDeg:+maxSlope.toFixed(1),position:character.position.toArray(),triangles:renderer.info.render.triangles},null,2);out.dataset.result=error?'fail':'pass';
    checkpoint=0;finished=false;respawn();testing=false;button.disabled=false;
   };
  }

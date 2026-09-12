@@ -153,6 +153,18 @@
       "groundOffsetNote": "しゃがみ系。腰がクリップ先頭を基準に立ち姿勢の高さへ正規化されるため、そのままだと足が浮く（実測: つま先 0.42m / 接地クリップは 0.01〜0.03m）。groundOffset で最も低い足が地面へ来るよう腰を下げる"
     },
     {
+      "action": "crawl_slope",
+      "file": "Crawling.fbx",
+      "mixamo": "Crawling — Crawling Forward On Hands And Knees",
+      "loop": true,
+      "comment": "急斜面で歩行と壁登りの中間に使う四つん這い移動",
+      "yawOffset": "auto",
+      "animRate": 1.4,
+      "animRateNote": "素の root motion は 1.04m/s。1.4 倍で約 1.46m/s にして歩行より慎重な速度にする",
+      "groundOffset": true,
+      "groundOffsetNote": "四つん這いで足・手が浮かないよう最低接地点を地面へ合わせる"
+    },
+    {
       "action": "crouch_idle",
       "file": "packs/Action Adventure Pack/idle (4).fbx",
       "mixamo": "Action Adventure Pack / idle (4)",

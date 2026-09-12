@@ -1,6 +1,6 @@
 // キャラクター制御。
 //
-//  Normal   … Idle / Walk / Jog / Sprint / Jump(Start,Loop,Land)
+//  Normal   … Idle / Walk / Crawl / Jog / Sprint / Jump(Start,Loop,Land)
 //  Climbing … Grab / ClimbIdle / ClimbUp / ClimbDown / ClimbLeft / ClimbRight / Hang / Mantle / Drop
 //
 // Climbing 中は XZ 平面移動を止め、壁面ローカル 2D 座標 (u=横, v=縦) でキャラを動かす。
@@ -16,6 +16,7 @@ const _v3 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
 const _qPitch = new THREE.Quaternion();
+const _m = new THREE.Matrix4();
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 const FLIP_Y = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 
@@ -24,7 +25,7 @@ const FLIP_Y = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0
 const LANDING_STATES = ['jumpLand', 'landHard', 'landRoll'];
 // 向き監視の対象。cover 系は「壁を背にして横へ動く」= 体の向きと進行方向が
 // 90 度ずれているのが正しいので、意図的に外している。
-const GROUNDED_STATES = ['walk', 'sprint', 'sneak'];
+const GROUNDED_STATES = ['walk', 'crawl', 'sprint', 'sneak'];
 
 /* ---------------- パラメータ ---------------- */
 export const P = {
@@ -43,6 +44,14 @@ export const P = {
   walkSpeedDefault: 2.6,   // デバッグスライダーの基準値（歩行アニメの再生倍率にも使う）
   walkSpeedMin: 0.8,
   walkSpeedMax: 3.2,
+  // 急斜面では四つん這いの Mixamo クリップへ切り替える。normal.y は地面の
+  // 法線の上向き成分で、0.82 ≒ 35°。入る／戻るにヒステリシスを持たせて
+  // 三角形の境界で姿勢がちらつかないようにする。
+  crawlSpeed: 1.45,
+  crawlSlopeEnter: 0.82,
+  crawlSlopeExit: 0.87,
+  crawlMinNormalY: 0.5,       // これ未満は地面ではなく壁登りとして扱う
+  crawlTiltRate: 10,
   jogSpeed: 3.4,           // 現在は未使用（Jog_Fwd_Loop も未配線）
   sprintSpeed: 5.8,        // Shift
   // --- スニーク（C 押下中）---
@@ -255,6 +264,10 @@ export class Character {
     this.state = 'idle';
     this.velocity = new THREE.Vector3();
     this.grounded = true;
+    this.groundNormal = new THREE.Vector3(0, 1, 0);
+    this.slopeNormalY = 1;
+    this.slopeAngle = 0;
+    this.crawlActive = false;
     this.facing = 0;                 // yaw(rad) — 向きの唯一の持ち主（faceTowards / snapFacing 経由で書く）
     this.landingVel = new THREE.Vector3();  // 接地した瞬間の水平速度（着地の向き合わせに使う）
     this.prevPos = new THREE.Vector3();     // 前フレームの位置（向き監視の実変位用）
@@ -381,6 +394,28 @@ export class Character {
   forward(out) { return out.set(Math.sin(this.facing), 0, Math.cos(this.facing)); }
 
   /**
+   * 通常歩行は直立のまま、急斜面の四つん這いだけ地面へ体を沿わせる。
+   * facing は水平 yaw として保持し、前方を斜面へ投影してから法線を上軸に
+   * した基底を作る。これで斜面に対して手足が浮きにくく、緩斜面へ戻ると
+   * 自然に直立へ戻る。
+   */
+  updateNormalOrientation(dt) {
+    if (this.crawlActive && this.grounded && this.slopeNormalY > P.crawlMinNormalY) {
+      const n = this.groundNormal;
+      this.forward(_v3);
+      _v.copy(_v3).addScaledVector(n, -_v3.dot(n));
+      if (_v.lengthSq() < 1e-6) _v.copy(_v3);
+      _v.normalize();
+      _v2.crossVectors(_v, n).normalize();
+      _m.makeBasis(_v2, n, _v);
+      _q.setFromRotationMatrix(_m);
+    } else {
+      _q.setFromAxisAngle(WORLD_UP, this.facing);
+    }
+    this.obj.quaternion.slerp(_q, Math.min(1, dt * P.crawlTiltRate));
+  }
+
+  /**
    * 進行方向と体の向きが 90 度以上ずれていたら、進行方向へ即座に合わせる。
    * 空中での旋回が間に合わない短い落下でも、
    * 着地モーションが後ろ向きに再生されないことを保証する最後の砦。
@@ -490,8 +525,47 @@ export class Character {
     const landingLocked = LANDING_STATES.includes(this.state)
       && this.stateTime < this.landCancelTime(this.state);
 
-    // C 押下中はスニーク。速度はクリップの root motion から導出する
-    const speed = input.sprint ? P.sprintSpeed
+    // 接地判定。速度を決める前に地面の法線を読むことで、急斜面に入った
+    // フレームから四つん這いへ切り替えられる。
+    const g = this.probe.probeGround(this.obj.position);
+    const groundY = g ? g.point.y : -Infinity;
+    const wasGrounded = this.grounded;
+    this.grounded = !!g && this.obj.position.y - groundY < 0.06 && this.velocity.y <= 0.01;
+
+    if (g && g.normal) {
+      this.groundNormal.copy(g.normal).normalize();
+      this.slopeNormalY = THREE.MathUtils.clamp(this.groundNormal.y, -1, 1);
+    } else {
+      this.groundNormal.set(0, 1, 0);
+      this.slopeNormalY = 1;
+    }
+    this.slopeAngle = Math.acos(THREE.MathUtils.clamp(this.slopeNormalY, -1, 1));
+    const crawlEligible = this.grounded && hasInput && !input.sneak
+      && this.slopeNormalY > P.crawlMinNormalY;
+    if (this.crawlActive) {
+      if (!crawlEligible || this.slopeNormalY > P.crawlSlopeExit) this.crawlActive = false;
+    } else if (crawlEligible && this.slopeNormalY < P.crawlSlopeEnter) {
+      this.crawlActive = true;
+    }
+
+    if (this.grounded) {
+      this.obj.position.y = groundY;
+      this.velocity.y = 0;
+      if (input.jumpPressed) {
+        this.velocity.y = P.jumpSpeed;
+        this.grounded = false;
+        this.crawlActive = false;
+        this.setState('jumpStart');
+      }
+    } else {
+      this.crawlActive = false;
+      this.velocity.y += P.gravity * dt;
+    }
+
+    // C 押下中はスニーク。速度はクリップの root motion から導出する。
+    // 急斜面では sprint 入力より四つん這いを優先する。
+    const speed = this.crawlActive ? this.groundSpeed('crawl_slope', 'z', P.crawlSpeed)
+                : input.sprint ? P.sprintSpeed
                 : input.sneak ? this.groundSpeed('sneak_fwd', 'z', P.walkSpeed * 0.7)
                 : P.walkSpeed;
     const wish = (hasInput && !rootDriven && !landingLocked)
@@ -524,24 +598,6 @@ export class Character {
         wish.set(0, 0, 0);          // 踏み出さない
         this.atCliff = true;
       }
-    }
-
-    // 接地判定
-    const g = this.probe.probeGround(this.obj.position);
-    const groundY = g ? g.point.y : -Infinity;
-    const wasGrounded = this.grounded;
-    this.grounded = g && this.obj.position.y - groundY < 0.06 && this.velocity.y <= 0.01;
-
-    if (this.grounded) {
-      this.obj.position.y = groundY;
-      this.velocity.y = 0;
-      if (input.jumpPressed) {
-        this.velocity.y = P.jumpSpeed;
-        this.grounded = false;
-        this.setState('jumpStart');
-      }
-    } else {
-      this.velocity.y += P.gravity * dt;
     }
 
     // 水平移動（空中では慣性を残す）
@@ -579,7 +635,7 @@ export class Character {
     this.obj.position.add(step);
     if (this.obj.position.y < groundY) { this.obj.position.y = groundY; this.velocity.y = 0; }
 
-    this.obj.quaternion.setFromAxisAngle(WORLD_UP, this.facing);
+    this.updateNormalOrientation(dt);
 
     // --- 壁を掴む（前進入力中 or 空中のときだけ。真横に立っただけでは掴まない）---
     // スニーク中（接地時）は掴まない。C は「壁を背にして隠れる」操作なので、
@@ -654,6 +710,8 @@ export class Character {
         // cover 中で壁沿いの成分が無い（壁へ押し付けているだけ）ときも静止扱い
         this.setState('sneakIdle');
       }
+    } else if (this.crawlActive && hasInput) {
+      this.setState('crawl');
     } else if (hasInput) {
       this.setState(input.sprint ? 'sprint' : 'walk');
     } else {
@@ -667,6 +725,10 @@ export class Character {
       // 速度をデバッグ調整しても足の運びが滑らないよう、歩行アニメも同じ比率で再生する
       walk: ['Walk_Loop', { timeScale: this.walkRate() }],
       sprint: ['Sprint_Loop', { timeScale: 1.0 }],
+      // 急斜面では Mixamo の四つん這い（Crawling Forward On Hands And Knees）
+      // を使う。未配線の環境では歩行へ戻してゲームを止めない。
+      crawl: [pick('crawl_slope', 'Walk_Loop'),
+              { fade: 0.2, timeScale: this.groundRate('crawl_slope') }],
       // --- スニーク ---
       sneakIdle: [pick('crouch_idle', 'Idle_Loop'), { fade: 0.2 }],
       sneak: [pick('sneak_fwd', 'Walk_Loop'), { fade: 0.2, timeScale: this.groundRate('sneak_fwd') }],

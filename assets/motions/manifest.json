@@ -1,0 +1,160 @@
+{
+  "note": "CMU Graphics Lab Motion Capture Database (cgspeed Motionbuilder-friendly BVH conversion) からの抜粋",
+  "clips": [
+    {
+      "name": "climb_up",
+      "src": "13_34.bvh",
+      "srcFrames": [
+        231,
+        511
+      ],
+      "reversed": false,
+      "loop": true,
+      "fps": 30,
+      "frames": 72,
+      "duration": 2.3333333333333335,
+      "scaleToMeters": 0.052,
+      "yawOffset": 6.204221672802175,
+      "rootDelta": [
+        0.02009279653429985,
+        0.5584019422531128,
+        -0.2400371953845024
+      ],
+      "hipsHeightStart": 1.1369644403457642,
+      "loopPoseError": 0.3356
+    },
+    {
+      "name": "climb_down",
+      "src": "13_34.bvh",
+      "srcFrames": [
+        911,
+        1275
+      ],
+      "reversed": false,
+      "loop": true,
+      "fps": 30,
+      "frames": 93,
+      "duration": 3.033333333333333,
+      "scaleToMeters": 0.052,
+      "yawOffset": 6.06569997395667,
+      "rootDelta": [
+        0.11999520706012845,
+        -0.7429187297821045,
+        0.5141760110855103
+      ],
+      "hipsHeightStart": 1.7161298990249634,
+      "loopPoseError": 0.6591
+    },
+    {
+      "name": "climb_idle",
+      "src": "14_35.bvh",
+      "srcFrames": [
+        659,
+        835
+      ],
+      "reversed": false,
+      "loop": true,
+      "fps": 30,
+      "frames": 46,
+      "duration": 1.4666666666666666,
+      "scaleToMeters": 0.052,
+      "yawOffset": 6.0216255358042154,
+      "rootDelta": [
+        -0.00504399836063385,
+        0.005335211753845215,
+        -0.010410383343696594
+      ],
+      "hipsHeightStart": 1.7360252141952515,
+      "loopPoseError": 0.1497
+    },
+    {
+      "name": "wall_grab",
+      "src": "13_34.bvh",
+      "srcFrames": [
+        96,
+        215
+      ],
+      "reversed": false,
+      "loop": false,
+      "fps": 30,
+      "frames": 31,
+      "duration": 0.9666666666666667,
+      "scaleToMeters": 0.052,
+      "yawOffset": 5.836104427280562,
+      "rootDelta": [
+        -0.17626439034938812,
+        0.09780675172805786,
+        -0.0963040143251419
+      ],
+      "hipsHeightStart": 0.9772412180900574,
+      "loopPoseError": null
+    },
+    {
+      "name": "mantle",
+      "src": "81_14.bvh",
+      "srcFrames": [
+        1150,
+        1355
+      ],
+      "reversed": true,
+      "loop": false,
+      "fps": 30,
+      "frames": 53,
+      "duration": 1.7,
+      "scaleToMeters": 0.052,
+      "yawOffset": 1.27292688232441,
+      "rootDelta": [
+        0.14661918580532074,
+        0.4516928195953369,
+        0.025500807911157608
+      ],
+      "hipsHeightStart": 0.9730759859085083,
+      "loopPoseError": null
+    },
+    {
+      "name": "hang_idle",
+      "src": "01_14.bvh",
+      "srcFrames": [
+        1083,
+        1181
+      ],
+      "reversed": false,
+      "loop": true,
+      "fps": 30,
+      "frames": 26,
+      "duration": 0.8,
+      "scaleToMeters": 0.052,
+      "yawOffset": 0.03950655872821551,
+      "rootDelta": [
+        0.03360241651535034,
+        0.008257567882537842,
+        0.1301560401916504
+      ],
+      "hipsHeightStart": 0.9558640122413635,
+      "loopPoseError": 0.2784
+    },
+    {
+      "name": "climb_drop",
+      "src": "01_09.bvh",
+      "srcFrames": [
+        1540,
+        1620
+      ],
+      "reversed": false,
+      "loop": false,
+      "fps": 30,
+      "frames": 22,
+      "duration": 0.6666666666666666,
+      "scaleToMeters": 0.052,
+      "yawOffset": 5.423916538652006,
+      "rootDelta": [
+        0.5300671458244324,
+        -0.5795139670372009,
+        0.8974524065852165
+      ],
+      "hipsHeightStart": 1.484121561050415,
+      "loopPoseError": null,
+      "yawNote": "自動セグメント化が向きを 180 度取り違えていた（debug/scenario.js の ASSERT クリップの向きが揃っている が 178 度のズレとして検出）。π を加算して補正。"
+    }
+  ]
+}

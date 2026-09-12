@@ -1,0 +1,14 @@
+[
+ {"label":"ADOPT_climb_up_13_34",     "file":"13_34","f0":201,"f1":541},
+ {"label":"ADOPT_climb_down_13_34",   "file":"13_34","f0":881,"f1":1245},
+ {"label":"ADOPT_climb_idle_14_35",   "file":"14_35","f0":649,"f1":865},
+ {"label":"ADOPT_wall_grab_13_34",    "file":"13_34","f0":96,"f1":215},
+ {"label":"ADOPT_mantle_81_14_rev",   "file":"81_14","f0":1150,"f1":1355},
+ {"label":"ADOPT_hang_idle_01_14",    "file":"01_14","f0":470,"f1":640},
+ {"label":"REJECT_climbUp_01_06",     "file":"01_06","f0":409,"f1":665},
+ {"label":"REJECT_traverse_01_09_R",  "file":"01_09","f0":2617,"f1":2761},
+ {"label":"REJECT_traverse_01_09_L",  "file":"01_09","f0":681,"f1":817},
+ {"label":"REJECT_traverse_01_04",    "file":"01_04","f0":1089,"f1":1273},
+ {"label":"REJECT_climbIdle_01_09",   "file":"01_09","f0":1150,"f1":1400},
+ {"label":"REJECT_pullup_01_12",      "file":"01_12","f0":520,"f1":700}
+]

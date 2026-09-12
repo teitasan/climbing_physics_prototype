@@ -126,3 +126,7 @@ Quaternius Regular Male / Female を使う場合は `assets/characters/README.tx
 3. Jump Grab / Dyno
 4. Hang Idle の二次モーション強化
 5. Hang / Mantle の実クリップは後回し（Standard には無い）
+
+## ブラウザ版 白峰マップ
+
+Mesh Terrain Labから取り込んだ白峰・東峰の登山マップをブラウザで遊べます。GitHub Pagesでは [`shiramine.html`](./shiramine.html) を開いてください。地形の仕様と実測値は [`SHIRAMINE_BENCHMARK.md`](./SHIRAMINE_BENCHMARK.md)、操作と検証手順は [`SHIRAMINE_MAP.md`](./SHIRAMINE_MAP.md) に記録しています。

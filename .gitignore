@@ -9,3 +9,13 @@ __pycache__/
 .import/
 /android/
 tmp/
+
+# Browser prototype local/generated files
+.DS_Store
+*.blend
+*.blend1
+**/__pycache__/
+terrain-sim/node_modules/
+terrain-sim/dist/
+terrain-sim/.vite/
+assets/motions/mixamo/

@@ -39,8 +39,8 @@ export const P = {
   hangPitch: 0.0,
   pitchDamp: 8,
   lateralLean: 0,          // 横移動時の腰ロール（0 = 使わない。素のモーションのみ）
-  walkSpeed: 1.8,          // WASD の既定。1.4m/s から少し速くして登山ゲーム向けに調整
-  walkSpeedDefault: 1.8,   // デバッグスライダーの基準値（歩行アニメの再生倍率にも使う）
+  walkSpeed: 2.6,          // WASD の既定。登山マップで試した結果、2.6m/s を採用
+  walkSpeedDefault: 2.6,   // デバッグスライダーの基準値（歩行アニメの再生倍率にも使う）
   walkSpeedMin: 0.8,
   walkSpeedMax: 3.2,
   jogSpeed: 3.4,           // 現在は未使用（Jog_Fwd_Loop も未配線）
@@ -99,7 +99,7 @@ export const P = {
   // 1.2m だと段差を降りるだけで 2 秒固まるので、本当に高い落下だけに限定する。
   // これ未満は軽い着地(Jump_Land, 0.30s)。普通のジャンプの頂点は約 1.07m。
   landHardHeight: 2.5,
-  landCancelTime: 0.40,    // 軽い着地(jumpLand)を入力でキャンセルできるようになるまで
+  landCancelTime: 0.40,    // 軽い着地(jumpLand)の水平入力をロックする時間
   landCancelFade: 0.35,    // 着地を中断して移動へ移るときのクロスフェード（姿勢差を均す）
   // 大きい着地（前転・重い着地）はモーションを再生しきってから、
   // この時間だけ硬直（操作不能）を入れる。動きの重さを出すための間。
@@ -483,15 +483,19 @@ export class Character {
       this.faceTowards(this.velocity.x, this.velocity.z, dt, P.airTurnRate);
     }
 
-    // 着地リカバリ中はクリップの移動がルートを支配するので、入力では動かさない
+    // 着地リカバリ中は入力で水平移動させない。root motion の着地だけでなく、
+    // 軽い着地(jumpLand)もキャンセル可能時刻までは足を止める。
     const rootClip = P.rootMotionClips[this.state];
     const rootDriven = !!rootClip && !!this.clips[rootClip]?.userData?.rootCurve;
+    const landingLocked = LANDING_STATES.includes(this.state)
+      && this.stateTime < this.landCancelTime(this.state);
 
     // C 押下中はスニーク。速度はクリップの root motion から導出する
     const speed = input.sprint ? P.sprintSpeed
                 : input.sneak ? this.groundSpeed('sneak_fwd', 'z', P.walkSpeed * 0.7)
                 : P.walkSpeed;
-    const wish = (hasInput && !rootDriven) ? move.clone().multiplyScalar(speed) : new THREE.Vector3();
+    const wish = (hasInput && !rootDriven && !landingLocked)
+      ? move.clone().multiplyScalar(speed) : new THREE.Vector3();
 
     // --- スニーク中だけの特別扱い ---
     // 壁を背にした横移動（cover）と、崖から落ちない挙動（teeter）
@@ -545,7 +549,11 @@ export class Character {
       // 接地したフレームでは、まだ空中の水平速度が入っている。
       // この下で入力値へ上書きしてしまうので、着地の向き合わせ用に取っておく
       if (!wasGrounded) this.landingVel.set(this.velocity.x, 0, this.velocity.z);
-      this.velocity.x = wish.x; this.velocity.z = wish.z;
+      if (!wasGrounded || landingLocked) {
+        this.velocity.x = 0; this.velocity.z = 0;
+      } else {
+        this.velocity.x = wish.x; this.velocity.z = wish.z;
+      }
     } else {
       this.velocity.x += (wish.x - this.velocity.x) * Math.min(1, dt * 2.5);
       this.velocity.z += (wish.z - this.velocity.z) * Math.min(1, dt * 2.5);
@@ -754,7 +762,7 @@ export class Character {
    * 前転・重い着地のような「大きい動き」は **キャンセル不可**（Infinity）にして
    * 最後まで再生する。途中で切ると立ち上がりがクロスフェードに飲まれて
    * 「回転から立ち上がりまでが早すぎる」絵になる。
-   * 軽い着地(jumpLand)だけ P.landCancelTime で抜けられる。
+   * 軽い着地(jumpLand)だけ P.landCancelTime 後に抜けられる。そこまでは水平入力も止める。
    */
   landCancelTime(state) {
     return P.rootMotionClips[state] ? Infinity : P.landCancelTime;
@@ -775,7 +783,7 @@ export class Character {
   landHoldTime(state) {
     const name = P.rootMotionClips[state];
     const clip = name && this.clips[name];
-    if (!clip) return 0.30;                        // Jump_Land など、軽い着地
+    if (!clip) return Math.max(0.30, P.landCancelTime); // Jump_Land など、軽い着地
     const ud = clip.userData || {};
 
     // 次に「一息つく」モーションが続く場合は、**立ち上がりが終わった時点**で渡す。

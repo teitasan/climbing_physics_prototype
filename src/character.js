@@ -39,7 +39,10 @@ export const P = {
   hangPitch: 0.0,
   pitchDamp: 8,
   lateralLean: 0,          // 横移動時の腰ロール（0 = 使わない。素のモーションのみ）
-  walkSpeed: 1.4,          // WASD の既定（旧 C 押下時の速度をこちらへ移した）
+  walkSpeed: 1.8,          // WASD の既定。1.4m/s から少し速くして登山ゲーム向けに調整
+  walkSpeedDefault: 1.8,   // デバッグスライダーの基準値（歩行アニメの再生倍率にも使う）
+  walkSpeedMin: 0.8,
+  walkSpeedMax: 3.2,
   jogSpeed: 3.4,           // 現在は未使用（Jog_Fwd_Loop も未配線）
   sprintSpeed: 5.8,        // Shift
   // --- スニーク（C 押下中）---
@@ -653,7 +656,8 @@ export class Character {
     const pick = (name, fallback) => (this.clips[name] ? name : fallback);
     const A = {
       idle: ['Idle_Loop', {}],
-      walk: ['Walk_Loop', { timeScale: 1.0 }],
+      // 速度をデバッグ調整しても足の運びが滑らないよう、歩行アニメも同じ比率で再生する
+      walk: ['Walk_Loop', { timeScale: this.walkRate() }],
       sprint: ['Sprint_Loop', { timeScale: 1.0 }],
       // --- スニーク ---
       sneakIdle: [pick('crouch_idle', 'Idle_Loop'), { fade: 0.2 }],
@@ -983,6 +987,11 @@ export class Character {
   groundRate(name) {
     const u = this.clips[name] && this.clips[name].userData;
     return (u && u.animRate) || 1;
+  }
+
+  /** デバッグ用の歩行速度変更に合わせて、歩行アニメの足の周期も調整する。 */
+  walkRate() {
+    return THREE.MathUtils.clamp(P.walkSpeed / P.walkSpeedDefault, 0.5, 1.8);
   }
 
   /**

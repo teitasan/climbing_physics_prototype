@@ -3,12 +3,15 @@ import {OrbitControls} from 'three/jsm/controls/OrbitControls.js';
 import {RGBELoader} from 'three/jsm/loaders/RGBELoader.js';
 import {loadAll} from './assets.js';
 import {WallProbe} from './scene.js';
-import {Character} from './character.js';
+import {Character,P} from './character.js';
 import {Input} from './input.js';
 import {buildShiramine} from './shiramine-world.js';
 
 const el=id=>document.getElementById(id),status=s=>el('status').textContent=s;
 const query=new URLSearchParams(location.search);
+const debugMode=query.has('debug')||query.has('test');
+const requestedWalkSpeed=Number(query.get('walkSpeed'));
+if(query.has('walkSpeed')&&Number.isFinite(requestedWalkSpeed))P.walkSpeed=THREE.MathUtils.clamp(requestedWalkSpeed,P.walkSpeedMin,P.walkSpeedMax);
 async function start(){
  const renderer=new THREE.WebGLRenderer({antialias:true});renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.2;
  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.domElement.setAttribute('aria-label','白峰の登山ゲーム');document.body.prepend(renderer.domElement);
@@ -37,6 +40,16 @@ async function start(){
  function respawnCamera(){const p=character.position;camera.position.copy(p).add(new THREE.Vector3(Math.sin(yaw)*zoom,2.8,Math.cos(yaw)*zoom));}
  el('map-toggle').onclick=toggleMap;el('respawn').onclick=()=>{respawn();message('チェックポイントから再開');};
  el('quality').onclick=()=>{quality=quality===1?.7:1;renderer.shadowMap.enabled=quality===1;resize();el('quality').textContent=quality===1?'画質：標準':'画質：軽量';};
+ const speedPanel=el('speed-debug');
+ if(speedPanel&&debugMode){
+  speedPanel.hidden=false;
+  const slider=el('walk-speed'),value=el('walk-speed-value'),reset=el('walk-speed-reset');
+  slider.min=P.walkSpeedMin;slider.max=P.walkSpeedMax;slider.step=.1;
+  const applyWalkSpeed=raw=>{P.walkSpeed=THREE.MathUtils.clamp(Number(raw),P.walkSpeedMin,P.walkSpeedMax);slider.value=P.walkSpeed.toFixed(1);value.textContent=P.walkSpeed.toFixed(1)+' m/s';};
+  slider.addEventListener('input',()=>applyWalkSpeed(slider.value));
+  reset.onclick=()=>applyWalkSpeed(P.walkSpeedDefault);
+  applyWalkSpeed(P.walkSpeed);
+ }
  // Pointer Lockで画面端を気にせずTPS視点を操作する。非対応環境では
  // キャンバス内のマウス移動量へフォールバックする。
  let fallbackMouse=null,pointerLockRequested=false;
@@ -90,7 +103,7 @@ async function start(){
    el('stage').textContent=finished?'白峰・東峰　登頂':checkpoints[checkpoint].name;
    el('altitude').textContent=Math.round(2380+character.position.y)+' m';el('distance').textContent='残り '+Math.round(Math.max(0,world.route.length-cumulative[nearest]))+' m';el('progress').style.width=(finished?100:nearest/(points.length-1)*100)+'%';
    el('hint').textContent=finished?'登ってきた谷を見渡せます。全体表示でコースを振り返れます。':'次は「'+checkpoints[Math.min(4,checkpoint+1)].name+'」。黄色い道標と地面のラインをたどってください。';
-   el('stats').textContent=Math.round(fps)+' fps · '+Math.round(renderer.info.render.triangles/1000)+'千 三角形 · '+character.state;drawMap();
+   el('stats').textContent=Math.round(fps)+' fps · '+Math.round(renderer.info.render.triangles/1000)+'千 三角形 · '+character.state+(debugMode?' · 歩行 '+P.walkSpeed.toFixed(1)+' m/s':'');drawMap();
   }
   renderer.render(scene,camera);
  }

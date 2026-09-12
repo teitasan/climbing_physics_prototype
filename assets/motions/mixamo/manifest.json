@@ -1,0 +1,517 @@
+{
+  "note": "Mixamo から取得したモーション。clips = ゲームが起動時に読み込んで状態機械に繋いでいるもの。library = プロジェクトに入れてあるが未配線のもの（debug/clips.html で確認できる）。",
+  "download": "FBX Binary(.fbx) / Without Skin / 30fps / Keyframe Reduction: none",
+  "defaults": {
+    "unitScale": 0.01,
+    "inPlace": true,
+    "_note": "yawOffset は指定しない（src/mixamo.js が bind pose を自動整列する）。animRate は再生速度と移動速度の両方に掛かる倍率。"
+  },
+  "clips": [
+    {
+      "action": "wall_grab",
+      "file": "Idle To Braced Hang.fbx",
+      "mixamo": "Idle To Braced Hang — Jump To A Braced Hang From Standing Idle",
+      "loop": false,
+      "trimHead": 0.53,
+      "trimNote": "元クリップは \"Jump To A Braced Hang From Standing Idle\" で、先頭 0.53 秒がしゃがみ(腰 0.85→0.65m)＋跳躍(→1.22m)。取り付き位置はゲーム側が決めており、この跳躍ぶんの移動は in-place 化で捨てられて「その場で屈伸する」絵になっていたので切り捨てる。0.53 秒は手が壁面に到達する時刻の実測値（手の z が -7.06、壁は -7）。"
+    },
+    {
+      "action": "climb_idle",
+      "file": "Hanging Idle Against Wall.fbx",
+      "mixamo": "Hanging Idle — Hanging By Hands Against Wall",
+      "loop": true
+    },
+    {
+      "action": "climb_up",
+      "file": "Climbing Up Wall.fbx",
+      "mixamo": "Climbing Up Wall — Climbing Up A Wall",
+      "loop": true,
+      "comment": "連続的な壁登りループ。Braced Hang Hop Up（一段ホップ）は root motion の非線形性が移動距離とほぼ同じ（0.74/0.76）で、定速移動と噛み合わず違和感が出たため差し替えた"
+    },
+    {
+      "action": "climb_down",
+      "file": "Climbing Down Wall.fbx",
+      "mixamo": "Climbing Down Wall — Climbing Down A Wall",
+      "loop": true,
+      "comment": "同上。Braced Hang Drop（一段ドロップ）から差し替え",
+      "animRate": 1.8,
+      "animRateNote": "Climbing Down Wall は素の速度が 0.255m/s と遅いため 1.8 倍。再生速度と移動速度に同じ倍率が掛かるので足は滑らない"
+    },
+    {
+      "action": "climb_left",
+      "file": "Braced Hang Shimmy Left.fbx",
+      "mixamo": "Braced Hang Shimmy — Left Braced Hang Shimmy",
+      "loop": true
+    },
+    {
+      "action": "climb_right",
+      "file": "Braced Hang Shimmy Right.fbx",
+      "mixamo": "Braced Hang Shimmy — Right Braced Hang Shimmy",
+      "loop": true
+    },
+    {
+      "action": "hang_idle",
+      "file": "Hanging Idle.fbx",
+      "mixamo": "Hanging Idle — Hanging From A Ledge Idle",
+      "loop": true
+    },
+    {
+      "action": "mantle",
+      "file": "Climbing Pulling Up To A Ledge.fbx",
+      "mixamo": "Climbing — Pulling Up To A Ledge",
+      "loop": false,
+      "inPlace": true,
+      "comment": "手を縁に固定したまま体を引き上げる本物の懸垂。旧 Braced Hang To Crouch は手を持ち替えて登るモーションで、引き上げ中に手が 0.81m 上がってしまい「手が腰の高さまでずれる」絵になっていた。実測の手の上昇: 0.81m → 0.22m（腰は 0.98m 上昇）",
+      "trimHead": 0.5,
+      "animRate": 2.0,
+      "trimNote": "先頭 0.5 秒は動かないハング（腰が上がり始めるのが t=0.5 の実測値）",
+      "animRateNote": "全長 3.83s → trimHead 後 3.33s。2.0 倍で約 1.7s にする（旧クリップは 1.13s）"
+    },
+    {
+      "action": "wall_jump",
+      "file": "Jump From Wall.fbx",
+      "mixamo": "Jump From Wall — Hanging On Wall To Jump Off",
+      "loop": false,
+      "comment": "壁から飛び降りる専用。地上の Jump_Start の流用を置き換え"
+    },
+    {
+      "action": "hang_left",
+      "file": "Left Shimmy.fbx",
+      "mixamo": "Left Shimmy — Free Hanging Shimmy Left",
+      "loop": true,
+      "comment": "hang 状態（足が壁から外れている）での左移動"
+    },
+    {
+      "action": "hang_right",
+      "file": "Right Shimmy.fbx",
+      "mixamo": "Right Shimmy — Free Hanging Shimmy Right",
+      "loop": true,
+      "comment": "hang 状態での右移動"
+    },
+    {
+      "action": "fall_idle",
+      "file": "Falling Idle.fbx",
+      "mixamo": "Falling Idle — Mid-Air Falling Idle",
+      "loop": true,
+      "comment": "落下中ループ。1411 フレームあるので先頭 1 秒だけ使う"
+    },
+    {
+      "action": "land_soft",
+      "file": "Hard Landing.fbx",
+      "mixamo": "Hard Landing — Mid-Air Falling To A Hard Landing",
+      "loop": false,
+      "comment": "落下高度が中くらいのときの着地",
+      "inPlace": "xz",
+      "groundAlign": true,
+      "landingNote": "先頭に落下部分（t=0 で足が 0.63m 宙）が含まれるので groundAlign で接地フレームまで切り捨てる。inPlace は \"xz\" にして縦の沈み込みをアニメーションとして残す（3 軸デトレンドすると足が地面下 0.26m まで潜り、二段落下に見える）"
+    },
+    {
+      "action": "land_roll",
+      "file": "Falling To Roll.fbx",
+      "mixamo": "Falling To Roll — Mid-Air Falling Into A Roll",
+      "loop": false,
+      "comment": "高所からの着地。前転で受け身",
+      "inPlace": "xz",
+      "groundAlign": true,
+      "landingNote": "先頭に落下部分（t=0 で足が 0.63m 宙）が含まれるので groundAlign で接地フレームまで切り捨てる。inPlace は \"xz\" にして縦の沈み込みをアニメーションとして残す（3 軸デトレンドすると足が地面下 0.26m まで潜り、二段落下に見える）"
+    },
+    {
+      "action": "catch_breath",
+      "file": "Wiping Sweat.fbx",
+      "mixamo": "Wiping Sweat — Wiping Sweat Idle",
+      "loop": false,
+      "comment": "高所からの前転着地の直後に一息つく。ただの硬直より意味のある間になる",
+      "sourceNote": "X Bot ではなく CH36_NONPBR で書き出した（キャラ切り替えが効かなかった）。ボーン名は mixamorig:* で同じ、リターゲットは bind pose を基準にするので実用上は問題ない。腰・頭の高さは実測で確認する",
+      "groundOffset": true,
+      "groundOffsetNote": "つま先が 0.09m 浮いていた（接地クリップは 0.01）",
+      "trimHead": 0.3,
+      "trimNote": "先頭 0.30 秒は手が下がったままの棒立ち（実測: 手 0.88 のまま、0.30 秒から上がり始めて 0.60 秒で 1.58 に達する）。前転から繋ぐと「回転→棒立ち→汗を拭う」に見えるので切り捨てる"
+    },
+    {
+      "action": "braced_to_free",
+      "file": "Braced To Free Hang.fbx",
+      "mixamo": "Braced To Free Hang — Braced Idle To Free Hang Idle",
+      "loop": false,
+      "comment": "足場が切れて腕だけになる遷移"
+    },
+    {
+      "action": "free_to_braced",
+      "file": "Free Hang To Braced.fbx",
+      "mixamo": "Free Hang To Braced — Free Hang Idle To Braced Idle",
+      "loop": false,
+      "comment": "足場に復帰する遷移"
+    },
+    {
+      "action": "sneak_fwd",
+      "file": "Sneaking Forward.fbx",
+      "mixamo": "Sneaking Forward — Sneaking Forward Quickly",
+      "loop": true,
+      "comment": "C 押下中の移動。root motion から速度を導出する",
+      "animRate": 0.5,
+      "animRateNote": "素の速度が 2.56m/s（Sneaking Forward Quickly）と速すぎるので 0.5 倍 = 1.28m/s",
+      "groundOffset": true,
+      "groundOffsetNote": "しゃがみ系。腰がクリップ先頭を基準に立ち姿勢の高さへ正規化されるため、そのままだと足が浮く（実測: つま先 0.42m / 接地クリップは 0.01〜0.03m）。groundOffset で最も低い足が地面へ来るよう腰を下げる"
+    },
+    {
+      "action": "crouch_idle",
+      "file": "packs/Action Adventure Pack/idle (4).fbx",
+      "mixamo": "Action Adventure Pack / idle (4)",
+      "loop": true,
+      "comment": "スニーク静止。cover sneak と同じ Action Adventure Pack のしゃがみ待機。単体の Mixamo `Crouch Idle` は胸の前で拳を構える格闘ゲームの構えに見えたため差し替えた（手の高さ 0.88 → 0.53、腰 0.53 → 0.49）",
+      "groundOffset": true,
+      "groundOffsetNote": "しゃがみ系。腰がクリップ先頭を基準に立ち姿勢の高さへ正規化されるため、そのままだと足が浮く（実測: つま先 0.42m / 接地クリップは 0.01〜0.03m）。groundOffset で最も低い足が地面へ来るよう腰を下げる",
+      "yawOffset": 3.141592653589793,
+      "yawNote": "Action Adventure Pack のクリップは体が **逆向き**（モデルローカル -Z 前方）で作られている。実測: つま先が -Z を向く / Walk_Loop から 154〜171 度ズレ。yawOffset に π を入れてクリップ側で正規約（+Z 前方）へ揃える。以前はコード側で facing を反転して打ち消していたが、同じ性質に 2 通りの対処が混ざるので焼き込みに一本化した"
+    },
+    {
+      "action": "cover_move_right",
+      "file": "packs/Action Adventure Pack/right cover sneak.fbx",
+      "mixamo": "Right Cover Sneak — Right Standing Sneak Behind Cover",
+      "loop": true,
+      "comment": "壁を背にしたスニーク横移動。**このクリップは体がカバー（壁）に正対して作られている**（Walk_Loop 基準で体の向きが 170 度ズレ、実測）。そのためゲーム側は facing を 壁の法線の *逆* に向ける（= 見た目の前方が法線側 = 壁を背にする）。体が後ろ向きなので local +X は見た目の右になり、結果として Mixamo 名の Left/Right と移動方向が一致する。先に「名前と逆」と判断したのは、体の向きを考えずに local X の符号だけ見た誤り。 実測 root motion local x = +1.29m / 1.13s。",
+      "groundOffset": true,
+      "groundOffsetNote": "しゃがみ系。腰がクリップ先頭を基準に立ち姿勢の高さへ正規化されるため、そのままだと足が浮く（実測: つま先 0.42m / 接地クリップは 0.01〜0.03m）。groundOffset で最も低い足が地面へ来るよう腰を下げる",
+      "yawOffset": 3.141592653589793,
+      "yawNote": "Action Adventure Pack のクリップは体が **逆向き**（モデルローカル -Z 前方）で作られている。実測: つま先が -Z を向く / Walk_Loop から 154〜171 度ズレ。yawOffset に π を入れてクリップ側で正規約（+Z 前方）へ揃える。以前はコード側で facing を反転して打ち消していたが、同じ性質に 2 通りの対処が混ざるので焼き込みに一本化した"
+    },
+    {
+      "action": "cover_move_left",
+      "file": "packs/Action Adventure Pack/left cover sneak.fbx",
+      "mixamo": "Left Cover Sneak — Left Standing Sneak Behind Cover",
+      "loop": true,
+      "comment": "壁を背にしたスニーク横移動。**このクリップは体がカバー（壁）に正対して作られている**（Walk_Loop 基準で体の向きが 170 度ズレ、実測）。そのためゲーム側は facing を 壁の法線の *逆* に向ける（= 見た目の前方が法線側 = 壁を背にする）。体が後ろ向きなので local +X は見た目の右になり、結果として Mixamo 名の Left/Right と移動方向が一致する。先に「名前と逆」と判断したのは、体の向きを考えずに local X の符号だけ見た誤り。 実測 root motion local x = -1.37m / 1.13s。",
+      "groundOffset": true,
+      "groundOffsetNote": "しゃがみ系。腰がクリップ先頭を基準に立ち姿勢の高さへ正規化されるため、そのままだと足が浮く（実測: つま先 0.42m / 接地クリップは 0.01〜0.03m）。groundOffset で最も低い足が地面へ来るよう腰を下げる",
+      "yawOffset": 3.141592653589793,
+      "yawNote": "Action Adventure Pack のクリップは体が **逆向き**（モデルローカル -Z 前方）で作られている。実測: つま先が -Z を向く / Walk_Loop から 154〜171 度ズレ。yawOffset に π を入れてクリップ側で正規約（+Z 前方）へ揃える。以前はコード側で facing を反転して打ち消していたが、同じ性質に 2 通りの対処が混ざるので焼き込みに一本化した"
+    },
+    {
+      "action": "teeter_enter",
+      "file": "Teeter Transition.fbx",
+      "mixamo": "Teeter Transition — Walking To Teetering",
+      "loop": false,
+      "comment": "崖際でよろけ始める遷移。スニーク中は落ちない仕様の見せ方"
+    },
+    {
+      "action": "teeter",
+      "file": "Teeter Short.fbx",
+      "mixamo": "Teeter — Short Teetering On An Edge",
+      "loop": true,
+      "comment": "崖際でのよろめきループ"
+    },
+    {
+      "action": "teeter_long",
+      "file": "Teeter Long.fbx",
+      "mixamo": "Teeter — Long Teetering On An Edge",
+      "loop": true,
+      "comment": "長いよろめき。崖際に居続けたとき用"
+    }
+  ],
+  "alternatives": [
+    {
+      "action": "climb_up",
+      "file": "Braced Hang Hop Up.fbx",
+      "note": "一段ホップ。root motion 駆動に切り替えるなら候補"
+    },
+    {
+      "action": "climb_down",
+      "file": "Braced Hang Drop To Braced.fbx",
+      "note": "一段ドロップ。同上"
+    },
+    {
+      "action": "mantle",
+      "file": "Braced Hang To Crouch.fbx",
+      "note": "旧マントル。手を持ち替えて登るので手が縁から離れる。ホールドを持ち替える壁ならこちらの絵が正しい場合もある"
+    },
+    {
+      "action": "crouch_idle",
+      "file": "Crouch Idle.fbx",
+      "mixamo": "Crouch Idle — Crouch Idle",
+      "note": "胸の前で拳を構える姿勢で格闘ゲームの構えに見えた（手の高さ 0.88 / パック版は 0.53）。スニーク用途では不採用。戦闘状態を作るなら候補"
+    }
+  ],
+  "library": [
+    {
+      "action": "wobbling",
+      "file": "Wobbling.fbx",
+      "mixamo": "Wobbling — Wobbling On A Ledge",
+      "loop": true
+    },
+    {
+      "action": "edge_slip",
+      "file": "Edge Slip.fbx",
+      "mixamo": "Edge Slip — Slipping Off An Edge Then Regaining Balance",
+      "loop": false
+    },
+    {
+      "action": "fall_off_edge",
+      "file": "Falling From Losing Balance.fbx",
+      "mixamo": "Falling From Losing Balance — Losing Balance And Falling Off An Edge",
+      "loop": false
+    },
+    {
+      "action": "climb_slope",
+      "file": "Climbing Up Slope.fbx",
+      "mixamo": "Climbing — Climbing Up A Slope",
+      "loop": true
+    },
+    {
+      "action": "kneel_campfire",
+      "file": "Kneel Campfire.fbx",
+      "mixamo": "Kneel — Kneeling Warming Hands Over Campfire",
+      "loop": true
+    },
+    {
+      "action": "breathing_idle",
+      "file": "Breathing Idle.fbx",
+      "mixamo": "Breathing Idle",
+      "loop": true
+    },
+    {
+      "action": "drinking",
+      "file": "Drinking.fbx",
+      "mixamo": "Drinking — Male Drinking",
+      "loop": false
+    },
+    {
+      "action": "action_adventure_cover_to_stand_2",
+      "file": "packs/Action Adventure Pack/cover to stand (2).fbx",
+      "mixamo": "Action Adventure Pack / cover to stand (2)",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_cover_to_stand",
+      "file": "packs/Action Adventure Pack/cover to stand.fbx",
+      "mixamo": "Action Adventure Pack / cover to stand",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_crouched_sneaking_left",
+      "file": "packs/Action Adventure Pack/crouched sneaking left.fbx",
+      "mixamo": "Action Adventure Pack / crouched sneaking left",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_crouched_sneaking_right",
+      "file": "packs/Action Adventure Pack/crouched sneaking right.fbx",
+      "mixamo": "Action Adventure Pack / crouched sneaking right",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_falling_idle",
+      "file": "packs/Action Adventure Pack/falling idle.fbx",
+      "mixamo": "Action Adventure Pack / falling idle",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_falling_to_roll",
+      "file": "packs/Action Adventure Pack/falling to roll.fbx",
+      "mixamo": "Action Adventure Pack / falling to roll",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_hard_landing",
+      "file": "packs/Action Adventure Pack/hard landing.fbx",
+      "mixamo": "Action Adventure Pack / hard landing",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_idle_2",
+      "file": "packs/Action Adventure Pack/idle (2).fbx",
+      "mixamo": "Action Adventure Pack / idle (2)",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_idle_3",
+      "file": "packs/Action Adventure Pack/idle (3).fbx",
+      "mixamo": "Action Adventure Pack / idle (3)",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_idle_4",
+      "file": "packs/Action Adventure Pack/idle (4).fbx",
+      "mixamo": "Action Adventure Pack / idle (4)",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_idle_5",
+      "file": "packs/Action Adventure Pack/idle (5).fbx",
+      "mixamo": "Action Adventure Pack / idle (5)",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_idle",
+      "file": "packs/Action Adventure Pack/idle.fbx",
+      "mixamo": "Action Adventure Pack / idle",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_jumping_up",
+      "file": "packs/Action Adventure Pack/jumping up.fbx",
+      "mixamo": "Action Adventure Pack / jumping up",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_left_turn",
+      "file": "packs/Action Adventure Pack/left turn.fbx",
+      "mixamo": "Action Adventure Pack / left turn",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_right_turn",
+      "file": "packs/Action Adventure Pack/right turn.fbx",
+      "mixamo": "Action Adventure Pack / right turn",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_run_to_stop",
+      "file": "packs/Action Adventure Pack/run to stop.fbx",
+      "mixamo": "Action Adventure Pack / run to stop",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_running",
+      "file": "packs/Action Adventure Pack/running.fbx",
+      "mixamo": "Action Adventure Pack / running",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_stand_to_cover_2",
+      "file": "packs/Action Adventure Pack/stand to cover (2).fbx",
+      "mixamo": "Action Adventure Pack / stand to cover (2)",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_stand_to_cover",
+      "file": "packs/Action Adventure Pack/stand to cover.fbx",
+      "mixamo": "Action Adventure Pack / stand to cover",
+      "loop": true
+    },
+    {
+      "action": "action_adventure_walking",
+      "file": "packs/Action Adventure Pack/walking.fbx",
+      "mixamo": "Action Adventure Pack / walking",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_backwards_turn_left",
+      "file": "packs/Male Injured Pack/injured backwards turn left.fbx",
+      "mixamo": "Male Injured Pack / injured backwards turn left",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_backwards_turn_right",
+      "file": "packs/Male Injured Pack/injured backwards turn right.fbx",
+      "mixamo": "Male Injured Pack / injured backwards turn right",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_hurting_idle",
+      "file": "packs/Male Injured Pack/injured hurting idle.fbx",
+      "mixamo": "Male Injured Pack / injured hurting idle",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_idle",
+      "file": "packs/Male Injured Pack/injured idle.fbx",
+      "mixamo": "Male Injured Pack / injured idle",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_run_backwards_left_turn",
+      "file": "packs/Male Injured Pack/injured run backwards left turn.fbx",
+      "mixamo": "Male Injured Pack / injured run backwards left turn",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_run_backwards_right_turn",
+      "file": "packs/Male Injured Pack/injured run backwards right turn.fbx",
+      "mixamo": "Male Injured Pack / injured run backwards right turn",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_run_backwards",
+      "file": "packs/Male Injured Pack/injured run backwards.fbx",
+      "mixamo": "Male Injured Pack / injured run backwards",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_run_jump",
+      "file": "packs/Male Injured Pack/injured run jump.fbx",
+      "mixamo": "Male Injured Pack / injured run jump",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_run_left_turn",
+      "file": "packs/Male Injured Pack/injured run left turn.fbx",
+      "mixamo": "Male Injured Pack / injured run left turn",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_run_right_turn",
+      "file": "packs/Male Injured Pack/injured run right turn.fbx",
+      "mixamo": "Male Injured Pack / injured run right turn",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_run",
+      "file": "packs/Male Injured Pack/injured run.fbx",
+      "mixamo": "Male Injured Pack / injured run",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_standing_jump",
+      "file": "packs/Male Injured Pack/injured standing jump.fbx",
+      "mixamo": "Male Injured Pack / injured standing jump",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_stumble_idle",
+      "file": "packs/Male Injured Pack/injured stumble idle.fbx",
+      "mixamo": "Male Injured Pack / injured stumble idle",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_turn_left",
+      "file": "packs/Male Injured Pack/injured turn left.fbx",
+      "mixamo": "Male Injured Pack / injured turn left",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_turn_right",
+      "file": "packs/Male Injured Pack/injured turn right.fbx",
+      "mixamo": "Male Injured Pack / injured turn right",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_walk_backwards",
+      "file": "packs/Male Injured Pack/injured walk backwards.fbx",
+      "mixamo": "Male Injured Pack / injured walk backwards",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_walk_left_turn",
+      "file": "packs/Male Injured Pack/injured walk left turn.fbx",
+      "mixamo": "Male Injured Pack / injured walk left turn",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_walk_right_turn",
+      "file": "packs/Male Injured Pack/injured walk right turn.fbx",
+      "mixamo": "Male Injured Pack / injured walk right turn",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_walk",
+      "file": "packs/Male Injured Pack/injured walk.fbx",
+      "mixamo": "Male Injured Pack / injured walk",
+      "loop": true
+    },
+    {
+      "action": "male_injured_injured_wave_idle",
+      "file": "packs/Male Injured Pack/injured wave idle.fbx",
+      "mixamo": "Male Injured Pack / injured wave idle",
+      "loop": true
+    }
+  ]
+}

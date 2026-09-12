@@ -378,6 +378,17 @@ function applyYawToHipsRotation(clip, hipsName, yaw, hipsParent) {
 const FOOT_BONES = ['DEF-footL', 'DEF-footR', 'DEF-toeL', 'DEF-toeR'];
 const HIPS_BONE = 'DEF-hips';
 
+// 急斜面用クリップの姿勢を地面へ載せるための接地点。
+// 手首だけだと指先が浮いて見えるので、使える場合は指先も含める。
+const CONTACT_HAND_BONES = [
+  'DEF-handL', 'DEF-handR',
+  'DEF-f_index.03.L', 'DEF-f_index.03.R',
+  'DEF-f_middle.03.L', 'DEF-f_middle.03.R',
+  'DEF-f_ring.03.L', 'DEF-f_ring.03.R',
+  'DEF-f_pinky.03.L', 'DEF-f_pinky.03.R',
+];
+const CONTACT_FOOT_BONES = ['DEF-footL', 'DEF-footR', 'DEF-toeL', 'DEF-toeR'];
+
 // クリップを 60Hz で走査し、指定ボーンのうち最も低い Y を毎フレーム記録する。
 // モデルローカルで測るので、モデルがどこに置かれていても足元 y=0 が地面になる。
 function sampleLowestY(clip, ctx, boneNames) {
@@ -405,6 +416,64 @@ function sampleLowestY(clip, ctx, boneNames) {
   mixer.uncacheClip(clip);
   ctx.restorePose();
   return { times, ys };
+}
+
+// 手と足を結ぶ「接地点の線」が、クリップ内で何度傾いているかを測る。
+//
+// Climbing Up A Slope は、モデル自身がすでに前傾した四つん這い姿勢を持つ。
+// 体の上軸を斜面法線へそのまま合わせると、手だけが斜面から浮くので、
+// 実際の手足の並びを 1 本の傾斜として測り、ゲーム側では
+//   体のピッチ = 地面のピッチ - クリップの接地点ピッチ
+// として合成する。これなら斜面角が変わっても手足の列が地面へ沿う。
+// 返り値はモデルローカル +Z 方向の角度[rad]。
+function measureContactPitch(clip, ctx) {
+  const hands = CONTACT_HAND_BONES
+    .map((n) => ctx.skeleton.bones.find((b) => b.name === n)).filter(Boolean);
+  const feet = CONTACT_FOOT_BONES
+    .map((n) => ctx.skeleton.bones.find((b) => b.name === n)).filter(Boolean);
+  if (!hands.length || !feet.length || !clip.duration) return null;
+
+  const mixer = new THREE.AnimationMixer(ctx.model);
+  const action = mixer.clipAction(clip);
+  action.play();
+  action.paused = true;
+  const front = new THREE.Vector3();
+  const rear = new THREE.Vector3();
+  const p = new THREE.Vector3();
+  const samples = [];
+  const count = Math.max(12, Math.min(48, Math.ceil(clip.duration * 12)));
+  for (let i = 0; i < count; i++) {
+    action.time = clip.duration * (i + 0.5) / count;
+    mixer.update(0);
+    ctx.model.updateMatrixWorld(true);
+    front.set(0, 0, 0);
+    for (const bone of hands) {
+      bone.getWorldPosition(p);
+      ctx.model.worldToLocal(p);
+      front.add(p);
+    }
+    rear.set(0, 0, 0);
+    for (const bone of feet) {
+      bone.getWorldPosition(p);
+      ctx.model.worldToLocal(p);
+      rear.add(p);
+    }
+    front.multiplyScalar(1 / hands.length);
+    rear.multiplyScalar(1 / feet.length);
+    const dz = front.z - rear.z;
+    if (Math.abs(dz) < 0.08) continue;
+    const angle = Math.atan2(front.y - rear.y, dz);
+    if (Number.isFinite(angle)) samples.push(angle);
+  }
+  mixer.stopAllAction();
+  mixer.uncacheClip(clip);
+  ctx.restorePose();
+  if (!samples.length) return null;
+
+  // 手足の入れ替えで一時的に外れたフレームの影響を減らすため中央値を使う。
+  samples.sort((a, b) => a - b);
+  const mid = samples[Math.floor(samples.length / 2)];
+  return THREE.MathUtils.clamp(mid, -1.2, 1.2);
 }
 
 function findGroundContact(clip, ctx) {
@@ -603,6 +672,7 @@ function shiftHipsY(clip, hipsName, dy, hipsParent) {
  *   groundAlign 先頭の落下部分（足が宙に浮いているフレーム）を捨てて接地から始める
  *   trimHead    先頭を指定秒だけ捨てる（クリップ前置きの動作をゲーム側が担当する場合）
  *   groundOffset  足が浮くぶん腰を下げる（しゃがみ系クリップ用。上の解説を読むこと）
+ *   contactPitch  "auto" なら手足の接地点からクリップ固有の前傾角を実測する
  *   unitScale   ソースの単位→m（Mixamo は cm なので 0.01）
  *   animRate    基準再生倍率
  */
@@ -610,7 +680,8 @@ export async function loadMixamoClip(url, ctx, opts = {}) {
   // yawOffset は null = クリップごとに実測して自動補正（detectClipYaw）。
   // animRate はそのクリップの基準再生倍率（1.0 = Mixamo が作った素の速度）
   const o = { yawOffset: null, inPlace: true, unitScale: 0.01, animRate: 1.0,
-              groundAlign: false, groundOffset: false, trimHead: 0, ...opts };
+              groundAlign: false, groundOffset: false, contactPitch: false,
+              trimHead: 0, ...opts };
   const fbx = await new FBXLoader().loadAsync(url);
 
   const srcClip = fbx.animations[0];
@@ -723,6 +794,16 @@ export async function loadMixamoClip(url, ctx, opts = {}) {
     }
   }
 
+  // Climbing Up A Slope のように、クリップ自身がすでに前傾している動きは
+  // 地面法線へそのまま立てると手が浮く。手足の列の傾きを一度だけ測って
+  // Character.updateNormalOrientation() で地形のピッチと合成する。
+  let measuredContactPitch = null;
+  if (o.contactPitch === 'auto' || o.contactPitch === true) {
+    measuredContactPitch = measureContactPitch(clip, ctx);
+  } else if (Number.isFinite(o.contactPitch)) {
+    measuredContactPitch = o.contactPitch;
+  }
+
   clip.userData = {
     rootMotion,
     rootCurve: curve,
@@ -732,11 +813,13 @@ export async function loadMixamoClip(url, ctx, opts = {}) {
     // クリップ自身が体を回す量[rad]。終了時に facing へ引き継ぐ（character.js）
     netYaw: measureNetYaw(clip, ctx),
     groundLift: +groundLift.toFixed(3),      // groundOffset で下げた量（診断用）
+    contactPitch: measuredContactPitch === null ? null : +measuredContactPitch.toFixed(4),
     // Mixamo のクリップはゲーム用の速度で作られているので既定は素の速度（1.0）。
     // 元が遅いクリップは manifest 側で上げる（移動速度も同じ倍率で上がるので滑らない）
     animRate: o.animRate,
     meta: { src: url, unitScale: o.unitScale,
             groundContact: contact && { time: +contact.time.toFixed(3), footY: +contact.footY.toFixed(3) },
+            contactPitch: measuredContactPitch === null ? null : +measuredContactPitch.toFixed(4),
             clipYaw: detected, clipYawDeg: +(detected * 180 / Math.PI).toFixed(1),
             posYaw: o.yawOffset, posYawDeg: +(o.yawOffset * 180 / Math.PI).toFixed(1) },
     source: 'Mixamo',

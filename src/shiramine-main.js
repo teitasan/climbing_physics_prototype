@@ -27,6 +27,9 @@ async function start(){
  assets.model.traverse(o=>{if(o.isMesh){o.castShadow=true;o.material=new THREE.MeshStandardMaterial({color:0xd49150,roughness:.8});}});
  const character=new Character({model:assets.model,skeleton:assets.skeleton,clips:{...assets.builtin,...assets.climbClips},probe,scene});character.ikEnabled=false;
  const input=new Input(renderer.domElement),points=world.route.points,checkpoints=world.route.checkpoints;
+ // ローカルの debug/test URL では、姿勢・接地点の確認をコンソールから行えるようにする。
+ // 本番 URL では参照を公開しない。
+ if(debugMode)window.__shiramineDebug={character,input,world,points,checkpoints};
  let checkpoint=0,finished=false,overview=false,yaw=0,pitch=.19,zoom=7,noticeTime=0,elapsed=0,nearest=0,testing=false;
  const orbit=new OrbitControls(camera,renderer.domElement);orbit.enabled=false;orbit.maxDistance=5000;orbit.minDistance=10;orbit.maxPolarAngle=Math.PI*.48;
  const cumulative=[0];for(let i=1;i<points.length;i++)cumulative.push(cumulative[i-1]+points[i].distanceTo(points[i-1]));
@@ -86,6 +89,8 @@ async function start(){
  const target=new THREE.Vector3(),camPos=new THREE.Vector3(),direction=new THREE.Vector3();
  let fpsFrames=0,fpsTime=0,fps=0,lastHud=0;
  function update(dt){
+  // debug URL の autowalk は、急斜面のモーションを連続確認するための自動入力。
+  if(query.has('autowalk'))input.inject('KeyW',true);
   const inp=input.sample();if(input.consumeToggle('KeyM'))toggleMap();if(input.consumeToggle('KeyR'))respawn();
   if(inp.camLeft)yaw+=dt*1.5;if(inp.camRight)yaw-=dt*1.5;
   if(!overview)character.update(dt,inp,yaw);elapsed+=dt;
@@ -103,7 +108,9 @@ async function start(){
    el('stage').textContent=finished?'白峰・東峰　登頂':checkpoints[checkpoint].name;
    el('altitude').textContent=Math.round(2380+character.position.y)+' m';el('distance').textContent='残り '+Math.round(Math.max(0,world.route.length-cumulative[nearest]))+' m';el('progress').style.width=(finished?100:nearest/(points.length-1)*100)+'%';
    el('hint').textContent=finished?'登ってきた谷を見渡せます。全体表示でコースを振り返れます。':'次は「'+checkpoints[Math.min(4,checkpoint+1)].name+'」。黄色い道標と地面のラインをたどってください。';
-   el('stats').textContent=Math.round(fps)+' fps · '+Math.round(renderer.info.render.triangles/1000)+'千 三角形 · '+character.state+(debugMode?' · 歩行 '+P.walkSpeed.toFixed(1)+' m/s · 傾斜 '+Math.round(character.slopeAngle*180/Math.PI)+'°':'');drawMap();
+   const dbgForward=debugMode?character.forward(new THREE.Vector3()):null;
+   const dbgTerrainPitch=dbgForward?Math.atan2(-(character.groundNormal.x*dbgForward.x+character.groundNormal.z*dbgForward.z),Math.max(.1,character.slopeNormalY)):0;
+   el('stats').textContent=Math.round(fps)+' fps · '+Math.round(renderer.info.render.triangles/1000)+'千 三角形 · '+character.state+(debugMode?' · 歩行 '+P.walkSpeed.toFixed(1)+' m/s · 傾斜 '+Math.round(character.slopeAngle*180/Math.PI)+'° · 地形 '+Math.round(dbgTerrainPitch*180/Math.PI)+'° · 体 '+Math.round(character.crawlPitch*180/Math.PI)+'° · 手補正 '+character.crawlContactOffset.toFixed(2)+'m':'');drawMap();
   }
   renderer.render(scene,camera);
  }

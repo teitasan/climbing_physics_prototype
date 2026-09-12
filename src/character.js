@@ -53,7 +53,9 @@ export const P = {
   crawlSlopeExit: 0.87,
   crawlMinNormalY: 0.5,       // これ未満は地面ではなく壁登りとして扱う
   crawlTiltRate: 10,
-  crawlMaxTilt: 0.45,         // 斜面へ沿わせる前後傾の上限（約26°）。横倒しを防ぐ
+  crawlMaxTilt: 0.80,         // 接地点を合わせた体全体の前後傾の上限（約46°）。横倒しはしない
+  crawlContactRate: 10,       // 手足の接地点へモデルを合わせる速さ
+  crawlContactMaxOffset: 0.24,// 接地点合わせでモデルを上下させる上限[m]
   jogSpeed: 3.4,           // 現在は未使用（Jog_Fwd_Loop も未配線）
   sprintSpeed: 5.8,        // Shift
   // --- スニーク（C 押下中）---
@@ -270,6 +272,9 @@ export class Character {
     this.slopeNormalY = 1;
     this.slopeAngle = 0;
     this.crawlActive = false;
+    this.crawlPitch = 0;
+    this.crawlContactOffset = 0;
+    this.crawlContactGap = 0;
     this.facing = 0;                 // yaw(rad) — 向きの唯一の持ち主（faceTowards / snapFacing 経由で書く）
     this.landingVel = new THREE.Vector3();  // 接地した瞬間の水平速度（着地の向き合わせに使う）
     this.prevPos = new THREE.Vector3();     // 前フレームの位置（向き監視の実変位用）
@@ -300,6 +305,20 @@ export class Character {
       mid: bone(RIG.limbs[key].mid),
       end: bone(RIG.limbs[key].end),
     }));
+    // 急斜面の接地補正に使う末端。手首だけでなく指先も見ることで、
+    // 「腕は届いているのに手のひらが浮く」見え方を減らす。
+    this.contactBones = {
+      hands: [
+        'DEF-hand.L', 'DEF-hand.R',
+        'DEF-f_index.03.L', 'DEF-f_index.03.R',
+        'DEF-f_middle.03.L', 'DEF-f_middle.03.R',
+        'DEF-f_ring.03.L', 'DEF-f_ring.03.R',
+        'DEF-f_pinky.03.L', 'DEF-f_pinky.03.R',
+      ].map(bone).filter(Boolean),
+      feet: ['DEF-foot.L', 'DEF-foot.R', 'DEF-toe.L', 'DEF-toe.R']
+        .map(bone).filter(Boolean),
+    };
+    this.modelBasePosition = model.position.clone();
     this.pelvisOffset = new THREE.Vector3();
 
     this.stats = { ikError: 0, reaches: 0 };
@@ -341,6 +360,13 @@ export class Character {
 
     this.updateFacingAudit(dt);
     this.anim.update(dt);
+    this.obj.updateMatrixWorld(true);
+
+    // Normal の向きはアニメーションを一度進めたあとで決める。
+    // そうすると現在フレームの手足を使って接地補正でき、1 フレーム遅れない。
+    if (this.mode === 'normal') this.updateNormalOrientation(dt);
+    this.obj.updateMatrixWorld(true);
+    this.updateCrawlContact(dt);
     this.obj.updateMatrixWorld(true);
 
     if (this.mode === 'climb' && this.state === 'mantle') {
@@ -406,10 +432,18 @@ export class Character {
       this.forward(_v3);
       const fx = _v3.x, fz = _v3.z;
       const slopeForward = this.groundNormal.x * fx + this.groundNormal.z * fz;
+      const terrainPitch = Math.atan2(-slopeForward, Math.max(0.1, this.slopeNormalY));
+      // クリップ側にも「手足を地面へ置くための前傾」が含まれる。
+      // 法線へ体を立てるだけではその前傾ぶん手が浮くので、
+      // 斜面のピッチからクリップ固有の接地点ピッチを引く。
+      const clip = this.clips.crawl_slope;
+      const contactPitch = clip && clip.userData && Number.isFinite(clip.userData.contactPitch)
+        ? clip.userData.contactPitch : 0;
       const pitch = THREE.MathUtils.clamp(
-        Math.atan2(-slopeForward, Math.max(0.1, this.slopeNormalY)),
+        terrainPitch - contactPitch,
         -P.crawlMaxTilt, P.crawlMaxTilt,
       );
+      this.crawlPitch = pitch;
       const cp = Math.cos(pitch), sp = Math.sin(pitch);
       // +pitch は「前方が斜面を上る」向き。right は常に水平なのでロールしない。
       _v.set(fx * cp, sp, fz * cp);
@@ -418,9 +452,66 @@ export class Character {
       _m.makeBasis(_v2, _v4, _v);
       _q.setFromRotationMatrix(_m);
     } else {
+      this.crawlPitch = 0;
       _q.setFromAxisAngle(WORLD_UP, this.facing);
     }
     this.obj.quaternion.slerp(_q, Math.min(1, dt * P.crawlTiltRate));
+  }
+
+  /**
+   * 現在フレームの手足のうち最も低い点を、斜面の局所平面へ合わせる。
+   *
+   * ルート（obj）は地面判定の基準なので動かさず、model のローカル位置だけを
+   * ワールド Y と同じ方向へ移動する。これで接地補正が衝突判定やジャンプ高さへ
+   * 混ざらず、アニメーションの手足だけが地面へ追従する。
+   */
+  updateCrawlContact(dt) {
+    const active = this.mode === 'normal' && this.crawlActive && this.grounded
+      && this.slopeNormalY > P.crawlMinNormalY
+      && (this.contactBones.hands.length || this.contactBones.feet.length);
+    let minGap = 0;
+    if (active) {
+      const n = this.groundNormal;
+      const ny = Math.max(0.1, n.y);
+      const root = this.obj.position;
+      let found = false;
+      const measure = (bones) => {
+        for (const b of bones) {
+          b.getWorldPosition(_v3);
+          const dx = _v3.x - root.x;
+          const dz = _v3.z - root.z;
+          // 地面平面 n・(p - rootGround) = 0 を Y について解く。
+          const planeY = root.y - (n.x * dx + n.z * dz) / ny;
+          const gap = _v3.y - planeY;
+          if (Number.isFinite(gap)) {
+            minGap = found ? Math.min(minGap, gap) : gap;
+            found = true;
+          }
+        }
+      };
+      measure(this.contactBones.hands);
+      measure(this.contactBones.feet);
+      if (!found) minGap = 0;
+    }
+
+    this.crawlContactGap = minGap;
+    const target = active
+      ? THREE.MathUtils.clamp(
+        this.crawlContactOffset - minGap,
+        -P.crawlContactMaxOffset, P.crawlContactMaxOffset,
+      )
+      : 0;
+    this.crawlContactOffset = THREE.MathUtils.damp(
+      this.crawlContactOffset, target, P.crawlContactRate, dt,
+    );
+
+    // model のローカル上方向をワールド上方向へ合わせる。
+    // （斜面上ではローカル Y が斜面法線なので、単純に model.position.y を
+    // 変えると接地点が斜面方向へずれてしまう。）
+    _q2.copy(this.obj.quaternion).invert();
+    _v4.copy(WORLD_UP).applyQuaternion(_q2);
+    this.model.position.copy(this.modelBasePosition)
+      .addScaledVector(_v4, this.crawlContactOffset);
   }
 
   /**
@@ -643,8 +734,6 @@ export class Character {
     this.obj.position.add(step);
     if (this.obj.position.y < groundY) { this.obj.position.y = groundY; this.velocity.y = 0; }
 
-    this.updateNormalOrientation(dt);
-
     // --- 壁を掴む（前進入力中 or 空中のときだけ。真横に立っただけでは掴まない）---
     // スニーク中（接地時）は掴まない。C は「壁を背にして隠れる」操作なので、
     // 壁へ寄ったら cover に入るのが期待される動き。
@@ -733,7 +822,7 @@ export class Character {
       // 速度をデバッグ調整しても足の運びが滑らないよう、歩行アニメも同じ比率で再生する
       walk: ['Walk_Loop', { timeScale: this.walkRate() }],
       sprint: ['Sprint_Loop', { timeScale: 1.0 }],
-      // 急斜面では Mixamo の四つん這い（Crawling Forward On Hands And Knees）
+      // 急斜面では Mixamo の手をついた斜面登り（Climbing Up A Slope）
       // を使う。未配線の環境では歩行へ戻してゲームを止めない。
       crawl: [pick('crawl_slope', 'Walk_Loop'),
               { fade: 0.2, timeScale: this.groundRate('crawl_slope') }],
@@ -1499,6 +1588,9 @@ export class Character {
       ik: (this.ikWeightNow ?? 0).toFixed(2),
       ikError: this.stats.ikError.toFixed(3),
       reaches: this.stats.reaches,
+      crawlPitch: this.crawlPitch,
+      crawlContactOffset: this.crawlContactOffset,
+      crawlContactGap: this.crawlContactGap,
       fallDrop: this.lastFallDrop,
       airTime: this.airTime,
       facingErr: this.facingAudit.angle,

@@ -154,15 +154,17 @@
     },
     {
       "action": "crawl_slope",
-      "file": "Crawling.fbx",
-      "mixamo": "Crawling — Crawling Forward On Hands And Knees",
+      "file": "Climbing Up Slope.fbx",
+      "mixamo": "Climbing — Climbing Up A Slope",
       "loop": true,
-      "comment": "急斜面で歩行と壁登りの中間に使う四つん這い移動",
+      "comment": "急斜面で歩行と壁登りの中間に使う、手をついた斜面登り。手足の列から前傾角を実測して地形へ合わせる",
       "yawOffset": "auto",
-      "animRate": 1.4,
-      "animRateNote": "素の root motion は 1.04m/s。1.4 倍で約 1.46m/s にして歩行より慎重な速度にする",
+      "animRate": 4.0,
+      "animRateNote": "素の root motion は約0.35m/s。4倍で約1.4m/sにして、歩行より慎重な速度へ合わせる",
       "groundOffset": true,
-      "groundOffsetNote": "四つん這いで足・手が浮かないよう最低接地点を地面へ合わせる"
+      "groundOffsetNote": "まず足元を地面へ合わせ、実行中は手足の最低点も斜面平面へ追従させる",
+      "contactPitch": "auto",
+      "contactPitchNote": "クリップ自身の手足の列を測り、斜面ピッチから差し引いて手を設置する"
     },
     {
       "action": "crouch_idle",
@@ -265,7 +267,16 @@
       "action": "climb_slope",
       "file": "Climbing Up Slope.fbx",
       "mixamo": "Climbing — Climbing Up A Slope",
-      "loop": true
+      "loop": true,
+      "groundOffset": true,
+      "contactPitch": "auto"
+    },
+    {
+      "action": "crawl_low",
+      "file": "Crawling.fbx",
+      "mixamo": "Crawling — Crawling Forward On Hands And Knees",
+      "loop": true,
+      "comment": "旧来の低い四つん這い。急斜面の標準は crawl_slope（Climbing Up A Slope）へ移行した"
     },
     {
       "action": "kneel_campfire",

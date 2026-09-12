@@ -13,6 +13,7 @@ import { RIG } from './retargetMap.js';
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
+const _v4 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
 const _qPitch = new THREE.Quaternion();
@@ -52,6 +53,7 @@ export const P = {
   crawlSlopeExit: 0.87,
   crawlMinNormalY: 0.5,       // これ未満は地面ではなく壁登りとして扱う
   crawlTiltRate: 10,
+  crawlMaxTilt: 0.45,         // 斜面へ沿わせる前後傾の上限（約26°）。横倒しを防ぐ
   jogSpeed: 3.4,           // 現在は未使用（Jog_Fwd_Loop も未配線）
   sprintSpeed: 5.8,        // Shift
   // --- スニーク（C 押下中）---
@@ -395,21 +397,25 @@ export class Character {
 
   /**
    * 通常歩行は直立のまま、急斜面の四つん這いだけ地面へ体を沿わせる。
-   * facing は水平 yaw として保持し、前方を斜面へ投影してから法線を上軸に
-   * した基底を作る。これで斜面に対して手足が浮きにくく、緩斜面へ戻ると
-   * 自然に直立へ戻る。
+   * facing は水平 yaw として保持し、斜面のうち進行方向に沿う成分だけを
+   * 前後傾へ変換する。横方向の法線まで上軸へ使うと、直進中でも体が
+   * ロールして横倒しになるため、左右の傾きは作らない。
    */
   updateNormalOrientation(dt) {
     if (this.crawlActive && this.grounded && this.slopeNormalY > P.crawlMinNormalY) {
-      const n = this.groundNormal;
       this.forward(_v3);
-      _v.copy(_v3).addScaledVector(n, -_v3.dot(n));
-      if (_v.lengthSq() < 1e-6) _v.copy(_v3);
-      _v.normalize();
-      // 右軸は「法線 × 前方」。前方 × 法線にすると平地で -X になり、
-      // 基底が反転してクォータニオンが正しい回転にならない。
-      _v2.crossVectors(n, _v).normalize();
-      _m.makeBasis(_v2, n, _v);
+      const fx = _v3.x, fz = _v3.z;
+      const slopeForward = this.groundNormal.x * fx + this.groundNormal.z * fz;
+      const pitch = THREE.MathUtils.clamp(
+        Math.atan2(-slopeForward, Math.max(0.1, this.slopeNormalY)),
+        -P.crawlMaxTilt, P.crawlMaxTilt,
+      );
+      const cp = Math.cos(pitch), sp = Math.sin(pitch);
+      // +pitch は「前方が斜面を上る」向き。right は常に水平なのでロールしない。
+      _v.set(fx * cp, sp, fz * cp);
+      _v4.set(-fx * sp, cp, -fz * sp);
+      _v2.set(fz, 0, -fx);
+      _m.makeBasis(_v2, _v4, _v);
       _q.setFromRotationMatrix(_m);
     } else {
       _q.setFromAxisAngle(WORLD_UP, this.facing);

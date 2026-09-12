@@ -591,52 +591,115 @@ function measureRecovery(clip, ctx) {
   return s.times[s.times.length - 1];
 }
 
-// 先頭 t 秒を捨てる。t 時点の補間値を新しい先頭キーとして挿し込むので、
-// キーの粗いトラックでも切り口がずれない。
-function trimClipHead(clip, t) {
-  if (!(t > 1e-6)) return;
+// クリップを [t0, t1] に切り出す。両端へ補間値を挿し込むので、
+// キーの粗いトラックでも切り口がフレーム境界からずれない。
+function trimClipRange(clip, t0 = 0, t1 = clip.duration) {
+  const end = clip.duration;
+  const a = THREE.MathUtils.clamp(t0, 0, end);
+  const b = THREE.MathUtils.clamp(t1, a, end);
+  if (a < 1e-6 && b > end - 1e-6) return;
   for (const track of clip.tracks) {
     const stride = track.getValueSize();
-    const times = track.times;
-    const head = Float32Array.from(track.createInterpolant().evaluate(t).slice(0, stride));
-    let cut = 0;
-    while (cut < times.length && times[cut] <= t + 1e-6) cut++;
-    const values = new Float32Array(stride + (times.length - cut) * stride);
-    values.set(head, 0);
-    values.set(track.values.slice(cut * stride), stride);
-    const newTimes = new Float32Array(1 + times.length - cut);
-    for (let i = cut; i < times.length; i++) newTimes[i - cut + 1] = times[i] - t;
-    track.times = newTimes;
-    track.values = values;
+    const oldTimes = Array.from(track.times);
+    const interp = track.createInterpolant();
+    const times = [a];
+    const values = Array.from(interp.evaluate(a).slice(0, stride));
+    for (let i = 0; i < oldTimes.length; i++) {
+      const t = oldTimes[i];
+      if (t > a + 1e-6 && t < b - 1e-6) {
+        times.push(t);
+        for (let k = 0; k < stride; k++) values.push(track.values[i * stride + k]);
+      }
+    }
+    if (b > a + 1e-6) {
+      times.push(b);
+      const tail = interp.evaluate(b);
+      for (let k = 0; k < stride; k++) values.push(tail[k]);
+    }
+    track.times = Float32Array.from(times.map((t) => t - a));
+    track.values = Float32Array.from(values);
+  }
+  clip.resetDuration();
+}
+
+// 先頭 t 秒を捨てる（既存呼び出し用の薄いラッパー）。
+function trimClipHead(clip, t) {
+  if (t > 1e-6) trimClipRange(clip, t, clip.duration);
+}
+
+// ループの継ぎ目を短い区間で開始姿勢へ戻す。
+// Mixamo のワンショットをループ利用すると終端と先頭が一致しないことがあるため、
+// 最後の blend 秒だけを補間して、LoopRepeat の境界で立ち姿勢へポップしないようにする。
+function makeLoopSeam(clip, blend) {
+  if (!(blend > 1e-4) || clip.duration <= blend * 1.5) return;
+  const end = clip.duration;
+  const seam = end - blend;
+  for (const track of clip.tracks) {
+    const stride = track.getValueSize();
+    const oldTimes = Array.from(track.times);
+    const interp = track.createInterpolant();
+    // evaluate() の戻り値は補間器内の共有バッファなので、次の evaluate() で
+    // 上書きされないように配列へコピーして保持する。
+    const start = Array.from(interp.evaluate(0));
+    const seamValue = Array.from(interp.evaluate(seam));
+    const times = [];
+    const values = [];
+    const push = (t, v) => {
+      times.push(t);
+      for (let k = 0; k < stride; k++) values.push(v[k]);
+    };
+    for (let i = 0; i < oldTimes.length; i++) {
+      if (oldTimes[i] < seam - 1e-6) {
+        push(oldTimes[i], track.values.slice(i * stride, i * stride + stride));
+      }
+    }
+    push(seam, seamValue);
+    push(end, start);
+    track.times = Float32Array.from(times);
+    track.values = Float32Array.from(values);
   }
   clip.resetDuration();
 }
 
 // rootCurve（クリップ自身の水平移動量）も同じ位置で切り、先頭を 0 に振り直す。
-function trimRootCurve(curve, t0) {
-  if (!curve || !(t0 > 1e-6)) return curve;
+function trimRootCurve(curve, t0, t1 = curve && curve.times ? curve.times[curve.times.length - 1] : 0) {
+  if (!curve || !curve.times || curve.times.length < 2) return curve;
   const T = curve.times;
-  const at = (arr) => {
+  const duration = T[T.length - 1];
+  const a = THREE.MathUtils.clamp(t0, 0, duration);
+  const b = THREE.MathUtils.clamp(t1, a, duration);
+  const at = (arr, t) => {
     let i = 0;
-    while (i < T.length - 2 && T[i + 1] < t0) i++;
+    while (i < T.length - 2 && T[i + 1] < t) i++;
     const span = T[i + 1] - T[i];
-    return arr[i] + (arr[i + 1] - arr[i]) * (span > 0 ? (t0 - T[i]) / span : 0);
+    return arr[i] + (arr[i + 1] - arr[i]) * (span > 0 ? (t - T[i]) / span : 0);
   };
-  const x0 = at(curve.x);
-  const y0 = curve.y ? at(curve.y) : 0;
-  const z0 = at(curve.z);
+  const x0 = at(curve.x, a);
+  const y0 = curve.y ? at(curve.y, a) : 0;
+  const z0 = at(curve.z, a);
   const keep = [];
-  for (let i = 0; i < T.length; i++) if (T[i] > t0 + 1e-6) keep.push(i);
-  const n = keep.length + 1;
+  for (let i = 0; i < T.length; i++) if (T[i] > a + 1e-6 && T[i] < b - 1e-6) keep.push(i);
+  const n = keep.length + 2;
   const out = { times: new Float32Array(n), x: new Float32Array(n),
                 y: new Float32Array(n), z: new Float32Array(n) };
+  const xAtB = at(curve.x, b), yAtB = curve.y ? at(curve.y, b) : 0, zAtB = at(curve.z, b);
   keep.forEach((src, j) => {
-    out.times[j + 1] = T[src] - t0;
+    out.times[j + 1] = T[src] - a;
     out.x[j + 1] = curve.x[src] - x0;
     out.y[j + 1] = curve.y ? curve.y[src] - y0 : 0;
     out.z[j + 1] = curve.z[src] - z0;
   });
-  out.duration = out.times[n - 1];
+  const last = n - 1;
+  out.times[last] = b - a;
+  out.x[last] = xAtB - x0;
+  out.y[last] = yAtB - y0;
+  out.z[last] = zAtB - z0;
+  // 先頭は新しい原点。Float32Array の初期値 0 を明示しておく。
+  out.times[0] = 0;
+  out.x[0] = 0;
+  out.y[0] = 0;
+  out.z[0] = 0;
+  out.duration = out.times[last];
   const totalH = Math.hypot(out.x[n - 1], out.z[n - 1]);
   out.settleTime = out.times[n - 1];
   if (totalH > 1e-3) {
@@ -673,6 +736,8 @@ function shiftHipsY(clip, hipsName, dy, hipsParent) {
  *   trimHead    先頭を指定秒だけ捨てる（クリップ前置きの動作をゲーム側が担当する場合）
  *   groundOffset  足が浮くぶん腰を下げる（しゃがみ系クリップ用。上の解説を読むこと）
  *   contactPitch  "auto" なら手足の接地点からクリップ固有の前傾角を実測する
+ *   trimTail     先頭から数えた終了時刻。指定すると [trimHead, trimTail] だけを使う
+ *   loopBlend    ループ終端を先頭姿勢へ戻す補間時間[秒]
  *   unitScale   ソースの単位→m（Mixamo は cm なので 0.01）
  *   animRate    基準再生倍率
  */
@@ -681,7 +746,7 @@ export async function loadMixamoClip(url, ctx, opts = {}) {
   // animRate はそのクリップの基準再生倍率（1.0 = Mixamo が作った素の速度）
   const o = { yawOffset: null, inPlace: true, unitScale: 0.01, animRate: 1.0,
               groundAlign: false, groundOffset: false, contactPitch: false,
-              trimHead: 0, ...opts };
+              trimHead: 0, trimTail: null, loopBlend: 0, ...opts };
   const fbx = await new FBXLoader().loadAsync(url);
 
   const srcClip = fbx.animations[0];
@@ -753,19 +818,24 @@ export async function loadMixamoClip(url, ctx, opts = {}) {
   let recoverTime = 0;
   let motionEnd = 0;
 
-  // 先頭の不要な区間を捨てる（manifest の trimHead[秒]）。
+  // 先頭／末尾の不要な区間を捨てる（manifest の trimHead / trimTail[秒]）。
   // Mixamo のクリップは前後に「そこへ至る動作」が付いていることが多く、
   // ゲーム側が別の手段でその動作を担当している場合は邪魔になる。
   // 例: wall_grab は "Jump To A Braced Hang From Standing Idle" で
   //     先頭 0.53 秒がしゃがみ＋跳躍。取り付き位置はゲームが決めるので跳躍は使わない。
-  if (o.trimHead > 0) {
-    trimClipHead(clip, o.trimHead);
-    curve = trimRootCurve(curve, o.trimHead);
+  const trimStart = Math.max(0, Number(o.trimHead) || 0);
+  const trimEnd = Number.isFinite(Number(o.trimTail)) && Number(o.trimTail) > trimStart
+    ? Number(o.trimTail) : clip.duration;
+  if (trimStart > 0 || trimEnd < clip.duration - 1e-6) {
+    trimClipRange(clip, trimStart, trimEnd);
+    curve = trimRootCurve(curve, trimStart, trimEnd);
     if (curve) {
       rootMotion.x = curve.x[curve.x.length - 1];
       rootMotion.z = curve.z[curve.z.length - 1];
     }
   }
+
+  if (o.loopBlend > 0) makeLoopSeam(clip, Math.min(Number(o.loopBlend), clip.duration * 0.45));
 
   // しゃがみ系クリップは腰が立ち姿勢の高さへ正規化されて足が浮く。
   // クリップ内で最も低い足が地面 0 に来るよう腰を下げる（トリムはしない）。

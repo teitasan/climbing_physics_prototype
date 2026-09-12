@@ -311,6 +311,8 @@ async function loadMixamoOverrides(ctx, climbClips, sections = ['clips']) {
         inPlace: entry.inPlace ?? defaults.inPlace ?? true,
         groundAlign: entry.groundAlign ?? defaults.groundAlign ?? false,
         trimHead: entry.trimHead ?? defaults.trimHead ?? 0,
+        trimTail: entry.trimTail ?? defaults.trimTail ?? null,
+        loopBlend: entry.loopBlend ?? defaults.loopBlend ?? 0,
         groundOffset: entry.groundOffset ?? defaults.groundOffset ?? false,
         contactPitch: entry.contactPitch ?? defaults.contactPitch ?? false,
         animRate: entry.animRate ?? defaults.animRate ?? 1.0,

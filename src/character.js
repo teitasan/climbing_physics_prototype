@@ -406,7 +406,9 @@ export class Character {
       _v.copy(_v3).addScaledVector(n, -_v3.dot(n));
       if (_v.lengthSq() < 1e-6) _v.copy(_v3);
       _v.normalize();
-      _v2.crossVectors(_v, n).normalize();
+      // 右軸は「法線 × 前方」。前方 × 法線にすると平地で -X になり、
+      // 基底が反転してクォータニオンが正しい回転にならない。
+      _v2.crossVectors(n, _v).normalize();
       _m.makeBasis(_v2, n, _v);
       _q.setFromRotationMatrix(_m);
     } else {
